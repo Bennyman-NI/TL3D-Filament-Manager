@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tl3d-filament-manager"
+version = "0.1.0"
+description = "Filament inventory, Spoolman, RFID, and print-cost management for TL3D Prints"
+requires-python = ">=3.12"
+dependencies = [
+    "PySide6>=6.7,<7",
+]
+
+[project.scripts]
+tl3d-filament-manager = "app.__main__:main"
+
+[tool.setuptools]
+packages = ["app"]
