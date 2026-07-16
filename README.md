@@ -101,7 +101,11 @@ interval when needed:
 python -m app.pax12_bridge `
   --printer-url http://snapmaker.local:7125 `
   --matcher-url http://localhost:8123/api/rfid/match `
-  --poll-seconds 2
+  --poll-seconds 2 `
+  --duplicate-cooldown-seconds 10
 ```
 
-The bridge processes only new log content and suppresses repeated RFID lines.
+The bridge ignores historical RFID lines on startup, processes only new log
+content, suppresses immediate repeated copies of the same RFID event, and allows
+the same RFID event again after the duplicate cooldown or after a different RFID
+event is seen.

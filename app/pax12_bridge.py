@@ -15,6 +15,7 @@ from urllib.request import Request, urlopen
 DEFAULT_PRINTER_URL = os.environ.get("TL3D_PRINTER_URL", "http://localhost:7125")
 DEFAULT_MATCHER_URL = "http://localhost:8123/api/rfid/match"
 DEFAULT_POLL_SECONDS = 2.0
+DEFAULT_DUPLICATE_COOLDOWN_SECONDS = 10.0
 DEFAULT_TIMEOUT_SECONDS = 10.0
 
 KLIPPY_LOG_PATH = "/server/files/klippy.log"
@@ -54,6 +55,9 @@ class Pax12RfidEvent:
         if self.mode is not None:
             payload["mode"] = self.mode
         return payload
+
+    def duplicate_key(self) -> tuple[Any, ...]:
+        return (self.manufacturer, self.material, self.variant, self.colors, self.nums, self.alpha, self.mode)
 
 
 class MoonrakerClient:
@@ -140,12 +144,22 @@ class Pax12Bridge:
         matcher: RfidMatcherHttpClient,
         *,
         sleep: Callable[[float], None] = time.sleep,
+        time_source: Callable[[], float] = time.monotonic,
+        duplicate_cooldown_seconds: float = DEFAULT_DUPLICATE_COOLDOWN_SECONDS,
     ) -> None:
         self.moonraker = moonraker
         self.matcher = matcher
         self.sleep = sleep
+        self.time_source = time_source
+        self.duplicate_cooldown_seconds = duplicate_cooldown_seconds
         self._log_offset = 0
-        self._seen_rfid_lines: set[str] = set()
+        self._last_event_key: tuple[Any, ...] | None = None
+        self._last_event_time: float | None = None
+        self._initialized = False
+
+    def initialize_log_offset(self) -> None:
+        self._log_offset = len(self.moonraker.get_klippy_log())
+        self._initialized = True
 
     def poll_once(self) -> int:
         log_content = self.moonraker.get_klippy_log()
@@ -163,8 +177,8 @@ class Pax12Bridge:
             if event is None:
                 continue
 
-            line_key = line.strip()
-            if line_key in self._seen_rfid_lines:
+            now = self.time_source()
+            if self._is_immediate_duplicate(event, now):
                 continue
 
             match_result = self.matcher.match(event.to_matcher_payload())
@@ -172,17 +186,26 @@ class Pax12Bridge:
                 for message in build_console_messages(match_result):
                     self.moonraker.send_console_message(message)
 
-            self._seen_rfid_lines.add(line_key)
+            self._last_event_key = event.duplicate_key()
+            self._last_event_time = now
             processed += 1
         return processed
 
     def run_forever(self, *, poll_seconds: float = DEFAULT_POLL_SECONDS) -> None:
         while True:
             try:
-                self.poll_once()
+                if self._initialized:
+                    self.poll_once()
+                else:
+                    self.initialize_log_offset()
             except Pax12BridgeNetworkError as exc:
                 print(f"PAX12 bridge network error; retrying: {exc}")
             self.sleep(poll_seconds)
+
+    def _is_immediate_duplicate(self, event: Pax12RfidEvent, now: float) -> bool:
+        if self._last_event_key != event.duplicate_key() or self._last_event_time is None:
+            return False
+        return now - self._last_event_time < self.duplicate_cooldown_seconds
 
 
 def parse_pax12_rfid_line(line: str) -> Pax12RfidEvent | None:
@@ -239,8 +262,13 @@ def run_bridge(
     printer_url: str = DEFAULT_PRINTER_URL,
     matcher_url: str = DEFAULT_MATCHER_URL,
     poll_seconds: float = DEFAULT_POLL_SECONDS,
+    duplicate_cooldown_seconds: float = DEFAULT_DUPLICATE_COOLDOWN_SECONDS,
 ) -> None:
-    bridge = Pax12Bridge(MoonrakerClient(printer_url), RfidMatcherHttpClient(matcher_url))
+    bridge = Pax12Bridge(
+        MoonrakerClient(printer_url),
+        RfidMatcherHttpClient(matcher_url),
+        duplicate_cooldown_seconds=duplicate_cooldown_seconds,
+    )
     bridge.run_forever(poll_seconds=poll_seconds)
 
 
@@ -249,9 +277,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--printer-url", default=DEFAULT_PRINTER_URL, help="Moonraker printer URL.")
     parser.add_argument("--matcher-url", default=DEFAULT_MATCHER_URL, help="Local RFID matcher endpoint URL.")
     parser.add_argument("--poll-seconds", default=DEFAULT_POLL_SECONDS, type=float, help="Polling interval.")
+    parser.add_argument(
+        "--duplicate-cooldown-seconds",
+        default=DEFAULT_DUPLICATE_COOLDOWN_SECONDS,
+        type=float,
+        help="Seconds before accepting the same RFID event again.",
+    )
     args = parser.parse_args(argv)
 
-    run_bridge(printer_url=args.printer_url, matcher_url=args.matcher_url, poll_seconds=args.poll_seconds)
+    run_bridge(
+        printer_url=args.printer_url,
+        matcher_url=args.matcher_url,
+        poll_seconds=args.poll_seconds,
+        duplicate_cooldown_seconds=args.duplicate_cooldown_seconds,
+    )
     return 0
 
 

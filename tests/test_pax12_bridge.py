@@ -21,6 +21,10 @@ PAX12_LINE = (
     "[print_task_config] rfid info: Bambu PLA Basic "
     "{'nums': 1, 'alpha': 255, 'mode': 0, 'colors': ['0A2989']}"
 )
+PAX12_WHITE_LINE = (
+    "[print_task_config] rfid info: Bambu PLA Basic "
+    "{'nums': 1, 'alpha': 255, 'mode': 0, 'colors': ['FFFFFF']}"
+)
 
 
 class FakeMoonraker:
@@ -46,7 +50,20 @@ class FlakyMoonraker(FakeMoonraker):
         self.log_calls += 1
         if self.log_calls == 1:
             raise Pax12BridgeNetworkError("Moonraker unavailable")
-        return self.logs[-1]
+        if len(self.logs) == 1:
+            return self.logs[0]
+        return self.logs.pop(0)
+
+
+class MutableClock:
+    def __init__(self, value: float = 0.0) -> None:
+        self.value = value
+
+    def now(self) -> float:
+        return self.value
+
+    def advance(self, seconds: float) -> None:
+        self.value += seconds
 
 
 class FakeMatcher:
@@ -123,6 +140,59 @@ class Pax12BridgeTests(unittest.TestCase):
         self.assertEqual(len(matcher.payloads), 1)
         self.assertEqual(len(moonraker.sent_messages), 1)
 
+    def test_historical_rfid_lines_are_ignored_on_startup(self) -> None:
+        historical_log = f"startup noise\n{PAX12_LINE}\n"
+        appended_log = f"{historical_log}{PAX12_WHITE_LINE}\n"
+        moonraker = FakeMoonraker([historical_log, appended_log])
+        matcher = FakeMatcher(_matched_response())
+        bridge = Pax12Bridge(moonraker, matcher)
+
+        bridge.initialize_log_offset()
+        processed = bridge.poll_once()
+
+        self.assertEqual(processed, 1)
+        self.assertEqual(len(matcher.payloads), 1)
+        self.assertEqual(matcher.payloads[0]["colors"], ["FFFFFF"])
+
+    def test_immediate_duplicate_lines_are_suppressed(self) -> None:
+        clock = MutableClock()
+        moonraker = FakeMoonraker()
+        matcher = FakeMatcher(_matched_response())
+        bridge = Pax12Bridge(moonraker, matcher, time_source=clock.now)
+
+        processed = bridge.process_log_content(f"{PAX12_LINE}\n{PAX12_LINE}\n")
+
+        self.assertEqual(processed, 1)
+        self.assertEqual(len(matcher.payloads), 1)
+
+    def test_same_basic_blue_event_is_accepted_again_after_cooldown(self) -> None:
+        clock = MutableClock()
+        moonraker = FakeMoonraker()
+        matcher = FakeMatcher(_matched_response())
+        bridge = Pax12Bridge(moonraker, matcher, time_source=clock.now, duplicate_cooldown_seconds=10)
+
+        self.assertEqual(bridge.process_log_content(f"{PAX12_LINE}\n"), 1)
+        clock.advance(10)
+        self.assertEqual(bridge.process_log_content(f"{PAX12_LINE}\n"), 1)
+
+        self.assertEqual(len(matcher.payloads), 2)
+        self.assertEqual(matcher.payloads[0]["colors"], ["0A2989"])
+        self.assertEqual(matcher.payloads[1]["colors"], ["0A2989"])
+
+    def test_basic_blue_is_accepted_again_immediately_after_different_colour_event(self) -> None:
+        clock = MutableClock()
+        moonraker = FakeMoonraker()
+        matcher = FakeMatcher(_matched_response())
+        bridge = Pax12Bridge(moonraker, matcher, time_source=clock.now, duplicate_cooldown_seconds=10)
+
+        processed = bridge.process_log_content(f"{PAX12_LINE}\n{PAX12_WHITE_LINE}\n{PAX12_LINE}\n")
+
+        self.assertEqual(processed, 3)
+        self.assertEqual(
+            [payload["colors"] for payload in matcher.payloads],
+            [["0A2989"], ["FFFFFF"], ["0A2989"]],
+        )
+
     def test_matched_event_sends_console_message_with_filament_weight_and_location(self) -> None:
         moonraker = FakeMoonraker([f"{PAX12_LINE}\n"])
         matcher = FakeMatcher(_matched_response())
@@ -168,24 +238,27 @@ class Pax12BridgeTests(unittest.TestCase):
         self.assertEqual(matcher.payloads[1]["variant"], "Matte")
 
     def test_run_forever_reconnects_after_network_failure(self) -> None:
-        moonraker = FlakyMoonraker([f"{PAX12_LINE}\n"])
+        historical_log = f"historical\n{PAX12_LINE}\n"
+        appended_log = f"{historical_log}{PAX12_WHITE_LINE}\n"
+        moonraker = FlakyMoonraker([historical_log, appended_log])
         matcher = FakeMatcher(_matched_response())
         sleep_calls: list[float] = []
 
-        def stop_after_second_sleep(seconds: float) -> None:
+        def stop_after_third_sleep(seconds: float) -> None:
             sleep_calls.append(seconds)
-            if len(sleep_calls) == 2:
+            if len(sleep_calls) == 3:
                 raise StopIteration
 
-        bridge = Pax12Bridge(moonraker, matcher, sleep=stop_after_second_sleep)
+        bridge = Pax12Bridge(moonraker, matcher, sleep=stop_after_third_sleep)
 
         with patch("app.pax12_bridge.print"):
             with self.assertRaises(StopIteration):
                 bridge.run_forever(poll_seconds=0.01)
 
-        self.assertEqual(moonraker.log_calls, 2)
+        self.assertEqual(moonraker.log_calls, 3)
         self.assertEqual(len(matcher.payloads), 1)
-        self.assertEqual(sleep_calls, [0.01, 0.01])
+        self.assertEqual(matcher.payloads[0]["colors"], ["FFFFFF"])
+        self.assertEqual(sleep_calls, [0.01, 0.01, 0.01])
 
     def test_builds_one_console_message_per_matching_spool(self) -> None:
         messages = build_console_messages(
