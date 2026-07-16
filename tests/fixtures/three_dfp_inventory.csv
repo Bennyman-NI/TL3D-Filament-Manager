@@ -1,0 +1,5 @@
+Spool UUID,Manufacturer,Material,Material Subtype,Colour Name,Colour Hex,Multicolour Values,Multi Color Direction,Remaining Weight,Initial Weight,Location,Purchase Price,Notes,Purchase Date,Nozzle Temperature,Bed Temperature,Empty Spool Weight,Diameter,Density,Article Number,External ID
+spool-001,Polymaker,PLA,PolyTerra,Charcoal Black,#222222,,,750,1000,Shelf A,19.99,Opened for sample prints,2026-01-15,210,60,140,1.75,1.24,PM70123,polyterra-charcoal
+spool-002,Polymaker,PLA,Silk,Rainbow,,"FF0000,00FF00",coaxial,620,1000,Shelf B,24.50,Multicolour spool,2026-02-01,215,60,145,1.75,1.24,PM70999,poly-silk-rainbow
+spool-003,Prusament,PETG,Galaxy,Jet Black,#111111,,,900,1000,Shelf C,29.00,,2026-03-10,240,85,150,1.75,1.27,PRU-PETG-BLK,prusament-petg-black
+spool-bad,,PLA,Basic,White,#FFFFFF,,,500,1000,Shelf D,18.00,Missing manufacturer,2026-04-01,205,55,130,1.75,1.24,,
