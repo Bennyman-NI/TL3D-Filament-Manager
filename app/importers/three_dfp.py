@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import argparse
 import csv
+import json
 import re
-from dataclasses import dataclass, field
+import time
+from dataclasses import asdict, dataclass, field, replace
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import IO, Any, Iterable
 
@@ -70,6 +74,10 @@ class ImportAction:
 @dataclass(frozen=True)
 class ThreeDfpImportReport:
     dry_run: bool
+    start_time: str
+    finish_time: str
+    duration_seconds: float
+    source_csv_path: str | None = None
     rows_seen: int = 0
     rows_valid: int = 0
     vendors_created: int = 0
@@ -78,7 +86,10 @@ class ThreeDfpImportReport:
     filaments_reused: int = 0
     spools_created: int = 0
     spools_skipped: int = 0
+    duplicate_spool_uuids: list[str] = field(default_factory=list)
     backup_path: str | None = None
+    json_report_path: str | None = None
+    txt_report_path: str | None = None
     actions: list[ImportAction] = field(default_factory=list)
     errors: list[ImportErrorDetail] = field(default_factory=list)
 
@@ -101,13 +112,31 @@ class ThreeDfpImporter:
     def __init__(self, client: SpoolmanClient) -> None:
         self.client = client
 
-    def dry_run(self, csv_source: str | Path | IO[str]) -> ThreeDfpImportReport:
-        return self.import_csv(csv_source, apply=False)
+    def dry_run(
+        self,
+        csv_source: str | Path | IO[str],
+        *,
+        report_output_dir: str | Path | None = None,
+    ) -> ThreeDfpImportReport:
+        return self.import_csv(csv_source, apply=False, report_output_dir=report_output_dir)
 
-    def apply(self, csv_source: str | Path | IO[str]) -> ThreeDfpImportReport:
-        return self.import_csv(csv_source, apply=True)
+    def apply(
+        self,
+        csv_source: str | Path | IO[str],
+        *,
+        report_output_dir: str | Path | None = None,
+    ) -> ThreeDfpImportReport:
+        return self.import_csv(csv_source, apply=True, report_output_dir=report_output_dir)
 
-    def import_csv(self, csv_source: str | Path | IO[str], *, apply: bool) -> ThreeDfpImportReport:
+    def import_csv(
+        self,
+        csv_source: str | Path | IO[str],
+        *,
+        apply: bool,
+        report_output_dir: str | Path | None = None,
+    ) -> ThreeDfpImportReport:
+        start = datetime.now(UTC)
+        start_monotonic = time.perf_counter()
         rows, errors, rows_seen = parse_csv(csv_source)
         actions: list[ImportAction] = []
 
@@ -123,6 +152,8 @@ class ThreeDfpImporter:
         filaments_reused = 0
         spools_created = 0
         spools_skipped = 0
+        duplicate_spool_uuids: set[str] = set()
+        planned_spool_uuids: set[str] = set()
         backup_path: str | None = None
 
         valid_rows = 0
@@ -132,7 +163,8 @@ class ThreeDfpImporter:
         for row in rows:
             valid_rows += 1
             try:
-                if row.spool_uuid in imported_spool_uuids:
+                if row.spool_uuid in imported_spool_uuids or row.spool_uuid in planned_spool_uuids:
+                    duplicate_spool_uuids.add(row.spool_uuid)
                     spools_skipped += 1
                     actions.append(
                         ImportAction(row.row_number, "skip_spool", f"Spool {row.spool_uuid} was already imported.")
@@ -180,12 +212,18 @@ class ThreeDfpImporter:
                         raise ValueError("Cannot create spool before its filament exists.")
                     self.client.create_spool(_create_spool_request(row, filament.id))
                     imported_spool_uuids.add(row.spool_uuid)
+                planned_spool_uuids.add(row.spool_uuid)
                 spools_created += 1
             except Exception as exc:  # noqa: BLE001 - row-level import should continue.
                 errors.append(ImportErrorDetail(row.row_number, str(exc)))
 
-        return ThreeDfpImportReport(
+        finish = datetime.now(UTC)
+        report = ThreeDfpImportReport(
             dry_run=not apply,
+            start_time=_format_timestamp(start),
+            finish_time=_format_timestamp(finish),
+            duration_seconds=round(time.perf_counter() - start_monotonic, 6),
+            source_csv_path=_source_csv_path(csv_source),
             rows_seen=rows_seen,
             rows_valid=valid_rows,
             vendors_created=vendors_created,
@@ -194,10 +232,14 @@ class ThreeDfpImporter:
             filaments_reused=filaments_reused,
             spools_created=spools_created,
             spools_skipped=spools_skipped,
+            duplicate_spool_uuids=sorted(duplicate_spool_uuids),
             backup_path=backup_path,
             actions=actions,
             errors=errors,
         )
+        if report_output_dir is not None:
+            report = save_import_report(report, report_output_dir)
+        return report
 
 
 def parse_csv(csv_source: str | Path | IO[str]) -> tuple[list[ThreeDfpRow], list[ImportErrorDetail], int]:
@@ -216,6 +258,63 @@ def parse_csv(csv_source: str | Path | IO[str]) -> tuple[list[ThreeDfpRow], list
             except ValueError as exc:
                 errors.append(ImportErrorDetail(raw_number, str(exc)))
         return rows, errors, row_count
+
+
+def save_import_report(report: ThreeDfpImportReport, output_dir: str | Path) -> ThreeDfpImportReport:
+    report_dir = Path(output_dir)
+    report_dir.mkdir(parents=True, exist_ok=True)
+
+    timestamp = _filename_timestamp(report.start_time)
+    mode = "dry-run" if report.dry_run else "apply"
+    base_name = f"three-dfp-import-{timestamp}-{mode}"
+    json_path = report_dir / f"{base_name}.json"
+    txt_path = report_dir / f"{base_name}.txt"
+    persisted_report = replace(report, json_report_path=str(json_path), txt_report_path=str(txt_path))
+
+    json_path.write_text(json.dumps(asdict(persisted_report), indent=2), encoding="utf-8")
+    txt_path.write_text(_format_text_report(persisted_report), encoding="utf-8")
+    return persisted_report
+
+
+def _format_text_report(report: ThreeDfpImportReport) -> str:
+    lines = [
+        "3D Filament Profiles Import Report",
+        "===================================",
+        "",
+        f"Mode: {'dry-run' if report.dry_run else 'apply'}",
+        f"Source CSV: {report.source_csv_path or '(stream)'}",
+        f"Start time: {report.start_time}",
+        f"Finish time: {report.finish_time}",
+        f"Duration seconds: {report.duration_seconds:.6f}",
+        f"Backup path: {report.backup_path or '(none)'}",
+        "",
+        "Summary",
+        "-------",
+        f"Rows seen: {report.rows_seen}",
+        f"Rows valid: {report.rows_valid}",
+        f"Vendors created: {report.vendors_created}",
+        f"Vendors reused: {report.vendors_reused}",
+        f"Filaments created: {report.filaments_created}",
+        f"Filaments reused: {report.filaments_reused}",
+        f"Spools created: {report.spools_created}",
+        f"Spools skipped: {report.spools_skipped}",
+        "",
+        "Duplicate spool UUIDs",
+        "---------------------",
+    ]
+    lines.extend(report.duplicate_spool_uuids or ["(none)"])
+    lines.extend(["", "Row-level errors", "----------------"])
+    if report.errors:
+        lines.extend(f"Row {error.row_number}: {error.message}" for error in report.errors)
+    else:
+        lines.append("(none)")
+    lines.extend(["", "Actions", "-------"])
+    if report.actions:
+        lines.extend(f"Row {action.row_number}: {action.action} - {action.message}" for action in report.actions)
+    else:
+        lines.append("(none)")
+    lines.append("")
+    return "\n".join(lines)
 
 
 def spool_uuid_marker(spool_uuid: str) -> str:
@@ -474,6 +573,21 @@ def _normalize_header(value: str | None) -> str:
     return re.sub(r"[^a-z0-9]+", "", (value or "").casefold())
 
 
+def _format_timestamp(value: datetime) -> str:
+    return value.isoformat().replace("+00:00", "Z")
+
+
+def _filename_timestamp(value: str) -> str:
+    return re.sub(r"[^0-9A-Za-z]+", "-", value).strip("-")
+
+
+def _source_csv_path(csv_source: str | Path | IO[str]) -> str | None:
+    if isinstance(csv_source, (str, Path)):
+        return str(Path(csv_source))
+    name = getattr(csv_source, "name", None)
+    return str(name) if name else None
+
+
 class _NullContext:
     def __init__(self, value: IO[str]) -> None:
         self.value = value
@@ -527,3 +641,39 @@ _COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     "article_number": ("article number", "sku", "product code", "ean"),
     "external_id": ("external id", "external_id"),
 }
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Import 3D Filament Profiles CSV data into Spoolman.")
+    parser.add_argument("csv_path", help="Path to the 3D Filament Profiles CSV export.")
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--dry-run", action="store_true", help="Analyze the CSV and write reports without creating data.")
+    mode.add_argument("--apply", action="store_true", help="Create missing Spoolman data after taking a backup.")
+    parser.add_argument(
+        "--spoolman-url",
+        default="http://localhost:7912",
+        help="Base Spoolman URL. Defaults to http://localhost:7912.",
+    )
+    parser.add_argument(
+        "--report-dir",
+        default="import_reports",
+        help="Directory for JSON and TXT reports. Defaults to import_reports.",
+    )
+    args = parser.parse_args(argv)
+
+    importer = ThreeDfpImporter(SpoolmanClient(base_url=args.spoolman_url))
+    report = importer.import_csv(args.csv_path, apply=args.apply, report_output_dir=args.report_dir)
+
+    print(f"Mode: {'dry-run' if report.dry_run else 'apply'}")
+    print(f"Rows seen: {report.rows_seen}")
+    print(f"Rows valid: {report.rows_valid}")
+    print(f"Errors: {len(report.errors)}")
+    if report.json_report_path:
+        print(f"JSON report: {report.json_report_path}")
+    if report.txt_report_path:
+        print(f"TXT report: {report.txt_report_path}")
+    return 1 if report.errors else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

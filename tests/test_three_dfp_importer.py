@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import json
+import tempfile
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
+from unittest.mock import patch
 
-from app.importers.three_dfp import SPOOL_UUID_COMMENT_MARKER, ThreeDfpImporter, parse_csv, spool_uuid_marker
+from app.importers.three_dfp import SPOOL_UUID_COMMENT_MARKER, ThreeDfpImporter, main, parse_csv, spool_uuid_marker
 from app.spoolman_client import (
     BackupResponse,
     CreateFilamentRequest,
@@ -149,6 +154,12 @@ class ThreeDfpImporterTests(unittest.TestCase):
         self.assertEqual(client.created_vendors, [])
         self.assertEqual(client.created_filaments, [])
         self.assertEqual(client.created_spools, [])
+        self.assertIsNotNone(report.start_time)
+        self.assertIsNotNone(report.finish_time)
+        self.assertGreaterEqual(report.duration_seconds, 0)
+        self.assertEqual(report.source_csv_path, str(FIXTURE))
+        self.assertIsNone(report.json_report_path)
+        self.assertIsNone(report.txt_report_path)
 
     def test_apply_creates_backup_then_vendors_filaments_and_spools(self) -> None:
         client = FakeSpoolmanClient()
@@ -239,6 +250,90 @@ class ThreeDfpImporterTests(unittest.TestCase):
         self.assertEqual(report.spools_skipped, 1)
         self.assertEqual(len(client.created_spools), 2)
         self.assertTrue(any(action.action == "skip_spool" for action in report.actions))
+        self.assertEqual(report.duplicate_spool_uuids, ["spool-001"])
+
+    def test_reports_are_written_to_explicit_temporary_directory(self) -> None:
+        client = FakeSpoolmanClient()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            report = ThreeDfpImporter(client).dry_run(FIXTURE, report_output_dir=temp_dir)
+            json_path = Path(report.json_report_path or "")
+            txt_path = Path(report.txt_report_path or "")
+
+            self.assertTrue(json_path.exists())
+            self.assertTrue(txt_path.exists())
+            self.assertEqual(json_path.parent, Path(temp_dir))
+            self.assertEqual(txt_path.parent, Path(temp_dir))
+
+            report_data = json.loads(json_path.read_text(encoding="utf-8"))
+            self.assertEqual(report_data["source_csv_path"], str(FIXTURE))
+            self.assertEqual(report_data["rows_seen"], 4)
+            self.assertEqual(report_data["rows_valid"], 3)
+            self.assertEqual(report_data["vendors_created"], 2)
+            self.assertEqual(report_data["filaments_created"], 3)
+            self.assertEqual(report_data["spools_created"], 3)
+            self.assertEqual(report_data["backup_path"], None)
+            self.assertEqual(len(report_data["errors"]), 1)
+
+            text_report = txt_path.read_text(encoding="utf-8")
+            self.assertIn("3D Filament Profiles Import Report", text_report)
+            self.assertIn("Mode: dry-run", text_report)
+            self.assertIn("Rows seen: 4", text_report)
+            self.assertIn("Row 5: Missing required manufacturer.", text_report)
+
+    def test_apply_report_includes_backup_path_and_duplicate_uuids(self) -> None:
+        vendor = Vendor(id=1, registered="2026-07-16T12:00:00Z", name="Polymaker", extra={})
+        filament = Filament(id=1, registered="2026-07-16T12:00:00Z", density=1.24, diameter=1.75, extra={})
+        existing_spool = Spool(
+            id=1,
+            registered="2026-07-16T12:00:00Z",
+            filament=filament,
+            used_weight=0,
+            used_length=0,
+            archived=False,
+            comment=f"{SPOOL_UUID_COMMENT_MARKER} spool-001",
+            extra={},
+        )
+        client = FakeSpoolmanClient(vendors=[vendor], spools=[existing_spool])
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            report = ThreeDfpImporter(client).apply(FIXTURE, report_output_dir=temp_dir)
+            report_data = json.loads(Path(report.json_report_path or "").read_text(encoding="utf-8"))
+
+        self.assertEqual(report.backup_path, "/backups/spoolman.db")
+        self.assertEqual(report.duplicate_spool_uuids, ["spool-001"])
+        self.assertEqual(report_data["backup_path"], "/backups/spoolman.db")
+        self.assertEqual(report_data["duplicate_spool_uuids"], ["spool-001"])
+
+    def test_cli_uses_default_report_dir_and_spoolman_url_override(self) -> None:
+        with patch("app.importers.three_dfp.SpoolmanClient") as client_class:
+            with patch("app.importers.three_dfp.ThreeDfpImporter") as importer_class:
+                importer = importer_class.return_value
+                importer.import_csv.return_value = type(
+                    "Report",
+                    (),
+                    {
+                        "dry_run": True,
+                        "rows_seen": 4,
+                        "rows_valid": 3,
+                        "errors": [],
+                        "json_report_path": "import_reports/report.json",
+                        "txt_report_path": "import_reports/report.txt",
+                    },
+                )()
+
+                with redirect_stdout(StringIO()):
+                    exit_code = main(
+                        [
+                            str(FIXTURE),
+                            "--dry-run",
+                            "--spoolman-url",
+                            "http://spoolman.local:7912",
+                        ]
+                    )
+
+        self.assertEqual(exit_code, 0)
+        client_class.assert_called_once_with(base_url="http://spoolman.local:7912")
+        importer.import_csv.assert_called_once_with(str(FIXTURE), apply=False, report_output_dir="import_reports")
 
 
 if __name__ == "__main__":
