@@ -21,6 +21,7 @@ from app.spoolman_client import (
 )
 
 SPOOL_UUID_COMMENT_MARKER = "3DFP spool UUID:"
+DEFAULT_IMPORTED_SPOOL_INITIAL_WEIGHT_GRAMS = 1000.0
 
 
 @dataclass(frozen=True)
@@ -387,7 +388,7 @@ def _create_spool_request(row: ThreeDfpRow, filament_id: int) -> CreateSpoolRequ
     return CreateSpoolRequest(
         filament_id=filament_id,
         price=row.purchase_price,
-        initial_weight=row.initial_weight,
+        initial_weight=DEFAULT_IMPORTED_SPOOL_INITIAL_WEIGHT_GRAMS,
         spool_weight=row.empty_spool_weight,
         remaining_weight=row.remaining_weight,
         location=row.location,
