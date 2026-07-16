@@ -15,4 +15,4 @@ dependencies = [
 tl3d-filament-manager = "app.__main__:main"
 
 [tool.setuptools]
-packages = ["app"]
+packages = ["app", "app.importers"]
