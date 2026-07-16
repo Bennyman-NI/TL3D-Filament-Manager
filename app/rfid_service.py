@@ -11,6 +11,7 @@ from app.spoolman_client import DEFAULT_BASE_URL, Filament, Spool, SpoolmanClien
 
 DEFAULT_BIND_HOST = "0.0.0.0"
 DEFAULT_PORT = 8123
+INVENTORY_FETCH_LIMIT = 10000
 MATCH_PATH = "/api/rfid/match"
 
 
@@ -78,7 +79,7 @@ class RfidMatchResult:
 
 def match_rfid_filament(client: SpoolmanReader, payload: dict[str, Any]) -> RfidMatchResult:
     request = parse_rfid_match_request(payload)
-    filaments = client.list_filaments()
+    filaments = client.list_filaments(limit=INVENTORY_FETCH_LIMIT)
     candidates = _filter_filaments(filaments, request)
 
     if not candidates:
@@ -100,7 +101,7 @@ def match_rfid_filament(client: SpoolmanReader, payload: dict[str, Any]) -> Rfid
     filament = candidates[0]
     spools = tuple(
         MatchingSpool(spool_id=spool.id, remaining_weight=spool.remaining_weight, location=spool.location)
-        for spool in client.list_spools(allow_archived=False)
+        for spool in client.list_spools(limit=INVENTORY_FETCH_LIMIT, allow_archived=False)
         if spool.filament.id == filament.id
     )
     vendor_name = filament.vendor.name if filament.vendor is not None else None

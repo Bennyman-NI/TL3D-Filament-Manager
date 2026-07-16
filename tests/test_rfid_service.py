@@ -11,15 +11,21 @@ from app.spoolman_client import Filament, Spool, Vendor
 
 
 REGISTERED = "2026-07-16T12:00:00Z"
+DEFAULT_FAKE_PAGE_LIMIT = 100
 
 
 class FakeSpoolmanClient:
     def __init__(self, filaments: list[Filament], spools: list[Spool] | None = None) -> None:
         self.filaments = filaments
         self.spools = spools or []
+        self.filament_limits: list[int | None] = []
+        self.spool_limits: list[int | None] = []
 
     def list_filaments(self, *, sort: str | None = None, limit: int | None = None, offset: int = 0) -> list[Filament]:
-        return self.filaments
+        self.filament_limits.append(limit)
+        page_limit = DEFAULT_FAKE_PAGE_LIMIT if limit is None else limit
+        end = offset + page_limit
+        return self.filaments[offset:end]
 
     def list_spools(
         self,
@@ -29,7 +35,11 @@ class FakeSpoolmanClient:
         limit: int | None = None,
         offset: int = 0,
     ) -> list[Spool]:
-        return [spool for spool in self.spools if allow_archived or not spool.archived]
+        self.spool_limits.append(limit)
+        spools = [spool for spool in self.spools if allow_archived or not spool.archived]
+        page_limit = DEFAULT_FAKE_PAGE_LIMIT if limit is None else limit
+        end = offset + page_limit
+        return spools[offset:end]
 
 
 class RfidServiceTests(unittest.TestCase):
@@ -124,6 +134,38 @@ class RfidServiceTests(unittest.TestCase):
         self.assertTrue(result.matched)
         self.assertEqual(result.filament_id, 31)
         self.assertEqual(result.multi_color_hexes, "FF0000,00FF00,0000FF")
+
+    def test_requests_large_inventory_limit_for_filaments_and_spools(self) -> None:
+        target_filament = _filament(223, "Basic Blue (10601)", vendor="Bambu Lab", material="PLA", color_hex="0A2989")
+        filaments = [
+            _filament(index, f"PLA Grey {index}", vendor="Bambu Lab", material="PLA", color_hex="888888")
+            for index in range(1, 121)
+        ]
+        filaments.append(target_filament)
+        spools = [
+            _spool(index, filaments[0], remaining_weight=900 - index, location=f"Shelf {index}")
+            for index in range(1, 121)
+        ]
+        spools.append(_spool(321, target_filament, remaining_weight=742.5, location="Deep Shelf"))
+        client = FakeSpoolmanClient(filaments, spools)
+
+        result = match_rfid_filament(
+            client,
+            {
+                "manufacturer": "Bambu Lab",
+                "material": "PLA",
+                "variant": "Basic",
+                "colors": ["0A2989"],
+            },
+        )
+
+        self.assertTrue(result.matched)
+        self.assertEqual(result.filament_id, 223)
+        self.assertEqual([spool.spool_id for spool in result.spools], [321])
+        self.assertEqual(result.spools[0].remaining_weight, 742.5)
+        self.assertEqual(result.spools[0].location, "Deep Shelf")
+        self.assertEqual(client.filament_limits, [10000])
+        self.assertEqual(client.spool_limits, [10000])
 
     def test_http_endpoint_returns_match_json(self) -> None:
         filament = _filament(23, "Basic Blue (10601)", vendor="Bambu Lab", material="PLA", color_hex="0A2989")
