@@ -115,6 +115,24 @@ class ThreeDfpImporterTests(unittest.TestCase):
         self.assertEqual(rows[0].color_hex, "222222")
         self.assertEqual(rows[1].multi_color_hexes, "FF0000,00FF00")
         self.assertEqual(rows[1].multi_color_direction, "coaxial")
+        self.assertEqual(rows[0].spool_uuid, "spool-001")
+        self.assertEqual(rows[0].material_subtype, "PolyTerra")
+        self.assertEqual(rows[0].color_name, "Charcoal Black")
+        self.assertEqual(rows[0].remaining_weight, 750)
+        self.assertEqual(rows[0].purchase_price, 19.99)
+        self.assertEqual(rows[0].purchase_date, "2026-01-15")
+        self.assertEqual(rows[0].nozzle_temperature, 210)
+        self.assertEqual(rows[0].bed_temperature, 60)
+        self.assertEqual(rows[0].empty_spool_weight, 140)
+        self.assertEqual(rows[0].purchase_notes, "Sale purchase")
+        self.assertEqual(rows[0].purchase_currency, "GBP")
+        self.assertEqual(rows[0].spool_url, "https://example.test/spools/spool-001")
+        self.assertEqual(rows[0].filament_url, "https://example.test/filaments/polyterra-charcoal")
+        self.assertEqual(rows[0].updated_at, "2026-04-01T10:00:00Z")
+        self.assertEqual(rows[0].td_value, "0.030")
+        self.assertEqual(rows[0].spool_td_value, "0.031")
+        self.assertEqual(rows[0].spool_k_value, "0.020")
+        self.assertEqual(rows[0].spool_flow_ratio, "0.98")
 
     def test_dry_run_reports_planned_work_without_writes_or_backup(self) -> None:
         client = FakeSpoolmanClient()
@@ -149,11 +167,10 @@ class ThreeDfpImporterTests(unittest.TestCase):
         self.assertEqual(first_filament.color_hex, "222222")
         self.assertEqual(first_filament.settings_extruder_temp, 210)
         self.assertEqual(first_filament.settings_bed_temp, 60)
-        self.assertEqual(first_filament.weight, 1000)
         self.assertEqual(first_filament.spool_weight, 140)
         self.assertEqual(first_filament.price, 19.99)
-        self.assertEqual(first_filament.article_number, "PM70123")
-        self.assertEqual(first_filament.external_id, "polyterra-charcoal")
+        self.assertIsNone(first_filament.article_number)
+        self.assertIsNone(first_filament.external_id)
         self.assertIsNone(getattr(first_filament, "extra", None))
         self.assertIn("Material subtype: PolyTerra", first_filament.comment or "")
         self.assertIn("Colour name: Charcoal Black", first_filament.comment or "")
@@ -170,6 +187,15 @@ class ThreeDfpImporterTests(unittest.TestCase):
         self.assertIn(spool_uuid_marker("spool-001"), first_spool.comment or "")
         self.assertIn("Purchase date: 2026-01-15", first_spool.comment or "")
         self.assertIn("Notes: Opened for sample prints", first_spool.comment or "")
+        self.assertIn("Purchase notes: Sale purchase", first_spool.comment or "")
+        self.assertIn("Purchase currency: GBP", first_spool.comment or "")
+        self.assertIn("Spool URL: https://example.test/spools/spool-001", first_spool.comment or "")
+        self.assertIn("Filament URL: https://example.test/filaments/polyterra-charcoal", first_spool.comment or "")
+        self.assertIn("Updated at: 2026-04-01T10:00:00Z", first_spool.comment or "")
+        self.assertIn("TD value: 0.030", first_spool.comment or "")
+        self.assertIn("Spool TD value: 0.031", first_spool.comment or "")
+        self.assertIn("Spool K value: 0.020", first_spool.comment or "")
+        self.assertIn("Spool flow ratio: 0.98", first_spool.comment or "")
         self.assertIsNone(getattr(first_spool, "extra", None))
 
     def test_apply_reuses_existing_vendor_and_filament(self) -> None:
@@ -183,8 +209,6 @@ class ThreeDfpImporterTests(unittest.TestCase):
             vendor=vendor,
             material="PLA",
             color_hex="222222",
-            article_number="PM70123",
-            external_id="polyterra-charcoal",
             extra={},
         )
         client = FakeSpoolmanClient(vendors=[vendor], filaments=[filament])

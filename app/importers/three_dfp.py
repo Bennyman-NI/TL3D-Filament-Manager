@@ -35,7 +35,16 @@ class ThreeDfpRow:
     location: str | None = None
     purchase_price: float | None = None
     notes: str | None = None
+    purchase_notes: str | None = None
     purchase_date: str | None = None
+    purchase_currency: str | None = None
+    spool_url: str | None = None
+    filament_url: str | None = None
+    updated_at: str | None = None
+    td_value: str | None = None
+    spool_td_value: str | None = None
+    spool_k_value: str | None = None
+    spool_flow_ratio: str | None = None
     nozzle_temperature: int | None = None
     bed_temperature: int | None = None
     empty_spool_weight: float | None = None
@@ -217,6 +226,7 @@ def _parse_row(row_number: int, row: dict[str, str | None]) -> ThreeDfpRow:
     spool_uuid = _required(row, "spool uuid", _COLUMN_ALIASES["spool_uuid"])
     manufacturer = _required(row, "manufacturer", _COLUMN_ALIASES["manufacturer"])
     material = _required(row, "material", _COLUMN_ALIASES["material"])
+    color_hex, multi_color_hexes, multi_color_direction = _parse_rgb(_optional(row, _COLUMN_ALIASES["rgb"]))
 
     return ThreeDfpRow(
         row_number=row_number,
@@ -225,15 +235,24 @@ def _parse_row(row_number: int, row: dict[str, str | None]) -> ThreeDfpRow:
         material=material,
         material_subtype=_optional(row, _COLUMN_ALIASES["material_subtype"]),
         color_name=_optional(row, _COLUMN_ALIASES["color_name"]),
-        color_hex=_normalize_hex(_optional(row, _COLUMN_ALIASES["color_hex"])),
-        multi_color_hexes=_normalize_multi_hex(_optional(row, _COLUMN_ALIASES["multi_color_hexes"])),
-        multi_color_direction=_optional(row, _COLUMN_ALIASES["multi_color_direction"]),
+        color_hex=color_hex,
+        multi_color_hexes=multi_color_hexes,
+        multi_color_direction=multi_color_direction,
         remaining_weight=_optional_float(row, _COLUMN_ALIASES["remaining_weight"], "remaining weight"),
         initial_weight=_optional_float(row, _COLUMN_ALIASES["initial_weight"], "initial weight"),
         location=_optional(row, _COLUMN_ALIASES["location"]),
         purchase_price=_optional_float(row, _COLUMN_ALIASES["purchase_price"], "purchase price"),
         notes=_optional(row, _COLUMN_ALIASES["notes"]),
+        purchase_notes=_optional(row, _COLUMN_ALIASES["purchase_notes"]),
         purchase_date=_optional(row, _COLUMN_ALIASES["purchase_date"]),
+        purchase_currency=_optional(row, _COLUMN_ALIASES["purchase_currency"]),
+        spool_url=_optional(row, _COLUMN_ALIASES["spool_url"]),
+        filament_url=_optional(row, _COLUMN_ALIASES["filament_url"]),
+        updated_at=_optional(row, _COLUMN_ALIASES["updated_at"]),
+        td_value=_optional(row, _COLUMN_ALIASES["td_value"]),
+        spool_td_value=_optional(row, _COLUMN_ALIASES["spool_td_value"]),
+        spool_k_value=_optional(row, _COLUMN_ALIASES["spool_k_value"]),
+        spool_flow_ratio=_optional(row, _COLUMN_ALIASES["spool_flow_ratio"]),
         nozzle_temperature=_optional_int(row, _COLUMN_ALIASES["nozzle_temperature"], "nozzle temperature"),
         bed_temperature=_optional_int(row, _COLUMN_ALIASES["bed_temperature"], "bed temperature"),
         empty_spool_weight=_optional_float(row, _COLUMN_ALIASES["empty_spool_weight"], "empty spool weight"),
@@ -313,6 +332,15 @@ def _spool_comment(row: ThreeDfpRow) -> str:
             f"Multicolour values: {row.multi_color_hexes}" if row.multi_color_hexes else None,
             f"Purchase date: {row.purchase_date}" if row.purchase_date else None,
             f"Notes: {row.notes}" if row.notes else None,
+            f"Purchase notes: {row.purchase_notes}" if row.purchase_notes else None,
+            f"Purchase currency: {row.purchase_currency}" if row.purchase_currency else None,
+            f"Spool URL: {row.spool_url}" if row.spool_url else None,
+            f"Filament URL: {row.filament_url}" if row.filament_url else None,
+            f"Updated at: {row.updated_at}" if row.updated_at else None,
+            f"TD value: {row.td_value}" if row.td_value else None,
+            f"Spool TD value: {row.spool_td_value}" if row.spool_td_value else None,
+            f"Spool K value: {row.spool_k_value}" if row.spool_k_value else None,
+            f"Spool flow ratio: {row.spool_flow_ratio}" if row.spool_flow_ratio else None,
         ]
     )
 
@@ -432,6 +460,16 @@ def _normalize_multi_hex(value: str | None) -> str | None:
     return ",".join(_normalize_hex(part) or "" for part in re.split(r"[,;|]", value) if part.strip())
 
 
+def _parse_rgb(value: str | None) -> tuple[str | None, str | None, str | None]:
+    if value is None:
+        return None, None, None
+    colors = [_normalize_hex(part) for part in value.split(",") if part.strip()]
+    colors = [color for color in colors if color]
+    if len(colors) <= 1:
+        return colors[0] if colors else None, None, None
+    return None, ",".join(colors), "coaxial"
+
+
 def _normalize_header(value: str | None) -> str:
     return re.sub(r"[^a-z0-9]+", "", (value or "").casefold())
 
@@ -454,23 +492,36 @@ def _open_csv(csv_source: str | Path | IO[str]) -> Any:
 
 
 _COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
-    "spool_uuid": ("spool_uuid", "spool uuid", "uuid", "id"),
+    "spool_uuid": ("id", "spool_uuid", "spool uuid", "uuid"),
     "manufacturer": ("manufacturer", "brand", "vendor", "maker"),
     "material": ("material", "filament type", "type"),
-    "material_subtype": ("material subtype", "subtype", "variant", "material variant"),
+    "material_subtype": ("material_type", "material subtype", "subtype", "variant", "material variant"),
     "color_name": ("colour name", "color name", "colour", "color"),
-    "color_hex": ("colour hex", "color hex", "hex", "hex color", "hex colour"),
-    "multi_color_hexes": ("multicolour values", "multicolor values", "multi color hexes", "multi_color_hexes"),
-    "multi_color_direction": ("multi colour direction", "multi color direction", "multi_color_direction"),
-    "remaining_weight": ("remaining weight", "remaining weight g", "remaining_weight", "remaining"),
+    "rgb": ("rgb", "colour hex", "color hex", "hex", "hex color", "hex colour"),
+    "remaining_weight": ("remaining_grams", "remaining weight", "remaining weight g", "remaining_weight", "remaining"),
     "initial_weight": ("initial weight", "initial weight g", "spool weight", "net weight", "weight"),
     "location": ("location", "storage location"),
-    "purchase_price": ("purchase price", "price", "cost"),
+    "purchase_price": ("spool_purchase_price", "purchase price", "price", "cost"),
     "notes": ("notes", "note", "comment", "comments"),
-    "purchase_date": ("purchase date", "date purchased", "purchased"),
-    "nozzle_temperature": ("nozzle temperature", "extruder temperature", "print temperature", "hotend temperature"),
-    "bed_temperature": ("bed temperature", "bed temp"),
-    "empty_spool_weight": ("empty spool weight", "tare weight", "spool tare"),
+    "purchase_notes": ("spool_purchase_notes", "purchase notes"),
+    "purchase_date": ("spool_purchase_date", "purchase date", "date purchased", "purchased"),
+    "purchase_currency": ("spool_purchase_currency", "purchase currency", "currency"),
+    "spool_url": ("spool_url", "spool url"),
+    "filament_url": ("filament_url", "filament url"),
+    "updated_at": ("updated_at", "updated at"),
+    "td_value": ("td_value", "td value"),
+    "spool_td_value": ("spool_td_value", "spool td value"),
+    "spool_k_value": ("spool_k_value", "spool k value"),
+    "spool_flow_ratio": ("spool_flow_ratio", "spool flow ratio"),
+    "nozzle_temperature": (
+        "spool_preferred_nozzle_temp",
+        "nozzle temperature",
+        "extruder temperature",
+        "print temperature",
+        "hotend temperature",
+    ),
+    "bed_temperature": ("spool_preferred_bed_temp", "bed temperature", "bed temp"),
+    "empty_spool_weight": ("spool_empty_spool_weight", "empty spool weight", "tare weight", "spool tare"),
     "diameter": ("diameter", "filament diameter"),
     "density": ("density", "filament density"),
     "article_number": ("article number", "sku", "product code", "ean"),
