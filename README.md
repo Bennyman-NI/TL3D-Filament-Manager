@@ -52,3 +52,31 @@ defaults to `http://localhost:7912`; override it when needed:
 ```powershell
 python -m app.importers.three_dfp my-spools.csv --dry-run --spoolman-url http://spoolman.local:7912
 ```
+
+## Run the local RFID matching service
+
+Start the lightweight HTTP API. It binds to `0.0.0.0:8123` by default and uses
+Spoolman at `http://localhost:7912`:
+
+```powershell
+python -m app.rfid_service
+```
+
+Override the Spoolman URL or port when needed:
+
+```powershell
+python -m app.rfid_service --spoolman-url http://spoolman.local:7912 --port 8123
+```
+
+Match a PAX12 RFID payload:
+
+```powershell
+curl.exe -X POST http://localhost:8123/api/rfid/match `
+  -H "Content-Type: application/json" `
+  -d '{"manufacturer":"Bambu Lab","material":"PLA","variant":"Basic","nums":1,"alpha":255,"mode":0,"colors":["0A2989"]}'
+```
+
+The response returns `status: "matched"` only when exactly one filament matches
+vendor, material, variant, and colour. If more than one filament remains, the
+service returns `status: "ambiguous"` with candidate filaments instead of
+silently selecting one.
