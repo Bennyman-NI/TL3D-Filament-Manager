@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import socket
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
@@ -112,6 +112,45 @@ class BackupResponse:
     path: str
 
 
+@dataclass(frozen=True)
+class CreateVendorRequest:
+    name: str
+    comment: str | None = None
+
+
+@dataclass(frozen=True)
+class CreateFilamentRequest:
+    density: float
+    diameter: float
+    name: str | None = None
+    vendor_id: int | None = None
+    material: str | None = None
+    price: float | None = None
+    weight: float | None = None
+    spool_weight: float | None = None
+    article_number: str | None = None
+    comment: str | None = None
+    settings_extruder_temp: int | None = None
+    settings_bed_temp: int | None = None
+    color_hex: str | None = None
+    multi_color_hexes: str | None = None
+    multi_color_direction: str | None = None
+    external_id: str | None = None
+
+
+@dataclass(frozen=True)
+class CreateSpoolRequest:
+    filament_id: int
+    price: float | None = None
+    initial_weight: float | None = None
+    spool_weight: float | None = None
+    remaining_weight: float | None = None
+    location: str | None = None
+    lot_nr: str | None = None
+    comment: str | None = None
+    archived: bool | None = None
+
+
 class SpoolmanClient:
     """Small typed client for the Spoolman REST API v1."""
 
@@ -169,9 +208,28 @@ class SpoolmanClient:
     def create_backup(self) -> BackupResponse:
         return _parse_backup_response(self._request_json("POST", "/backup"))
 
-    def _request_json(self, method: str, path: str, query: dict[str, Any] | None = None) -> Any:
+    def create_vendor(self, request: CreateVendorRequest) -> Vendor:
+        return _parse_vendor(self._request_json("POST", "/vendor", body=_to_request_body(request)))
+
+    def create_filament(self, request: CreateFilamentRequest) -> Filament:
+        return _parse_filament(self._request_json("POST", "/filament", body=_to_request_body(request)))
+
+    def create_spool(self, request: CreateSpoolRequest) -> Spool:
+        return _parse_spool(self._request_json("POST", "/spool", body=_to_request_body(request)))
+
+    def _request_json(
+        self,
+        method: str,
+        path: str,
+        query: dict[str, Any] | None = None,
+        body: dict[str, Any] | None = None,
+    ) -> Any:
         url = self._build_url(path, query)
-        request = Request(url, method=method, headers={"Accept": "application/json"})
+        request_body = None if body is None else json.dumps(body).encode("utf-8")
+        headers = {"Accept": "application/json"}
+        if request_body is not None:
+            headers["Content-Type"] = "application/json"
+        request = Request(url, data=request_body, method=method, headers=headers)
 
         try:
             with urlopen(request, timeout=self.timeout) as response:
@@ -211,6 +269,10 @@ def _clean_query(query: dict[str, Any]) -> dict[str, str]:
         else:
             cleaned[key] = str(value)
     return cleaned
+
+
+def _to_request_body(request: Any) -> dict[str, Any]:
+    return {key: value for key, value in asdict(request).items() if value is not None}
 
 
 def _parse_list(payload: Any, parser: Any, item_name: str) -> list[Any]:
