@@ -13,9 +13,10 @@ pip install -e .
 python -m app
 ```
 
-## Capture your Spoolman API schema
+## Capture your Spoolman REST API schema
 
-With Spoolman running at `http://localhost:7912`:
+With Spoolman running at `http://localhost:7912`, capture the REST API v1 schema from
+`http://localhost:7912/api/v1/openapi.json`:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\capture_spoolman_schema.ps1
@@ -27,4 +28,5 @@ This creates:
 docs\spoolman-openapi.json
 ```
 
-That file defines the exact API accepted by your Spoolman installation.
+The script overwrites that file, verifies the response is an OpenAPI document for
+the Spoolman REST API, and prints the detected API version and path count.
