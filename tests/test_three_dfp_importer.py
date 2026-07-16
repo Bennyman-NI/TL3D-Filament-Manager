@@ -192,7 +192,9 @@ class ThreeDfpImporterTests(unittest.TestCase):
         self.assertEqual(second_filament.multi_color_direction, "coaxial")
 
         first_spool = client.created_spools[0]
+        self.assertEqual(first_spool.initial_weight, 1000)
         self.assertEqual(first_spool.remaining_weight, 750)
+        self.assertEqual(first_spool.spool_weight, 140)
         self.assertEqual(first_spool.location, "Shelf A")
         self.assertEqual(first_spool.price, 19.99)
         self.assertIn(spool_uuid_marker("spool-001"), first_spool.comment or "")
@@ -229,6 +231,74 @@ class ThreeDfpImporterTests(unittest.TestCase):
         self.assertEqual(report.vendors_reused, 1)
         self.assertEqual(report.filaments_reused, 1)
         self.assertEqual(client.created_spools[0].filament_id, 20)
+
+    def test_apply_with_existing_vendors_and_filaments_creates_only_missing_spools(self) -> None:
+        polymaker = Vendor(id=10, registered="2026-07-16T12:00:00Z", name="Polymaker", extra={})
+        prusament = Vendor(id=11, registered="2026-07-16T12:00:00Z", name="Prusament", extra={})
+        existing_filaments = [
+            Filament(
+                id=20,
+                registered="2026-07-16T12:00:00Z",
+                density=1.24,
+                diameter=1.75,
+                name="PolyTerra Charcoal Black",
+                vendor=polymaker,
+                material="PLA",
+                color_hex="222222",
+                extra={},
+            ),
+            Filament(
+                id=21,
+                registered="2026-07-16T12:00:00Z",
+                density=1.24,
+                diameter=1.75,
+                name="Silk Rainbow",
+                vendor=polymaker,
+                material="PLA",
+                multi_color_hexes="FF0000,00FF00",
+                extra={},
+            ),
+            Filament(
+                id=22,
+                registered="2026-07-16T12:00:00Z",
+                density=1.24,
+                diameter=1.75,
+                name="Galaxy Jet Black",
+                vendor=prusament,
+                material="PETG",
+                color_hex="111111",
+                extra={},
+            ),
+        ]
+        client = FakeSpoolmanClient(vendors=[polymaker, prusament], filaments=existing_filaments)
+
+        report = ThreeDfpImporter(client).apply(FIXTURE)
+
+        self.assertEqual(report.vendors_created, 0)
+        self.assertEqual(report.filaments_created, 0)
+        self.assertEqual(report.spools_created, 3)
+        self.assertEqual(client.created_vendors, [])
+        self.assertEqual(client.created_filaments, [])
+        self.assertEqual([spool.filament_id for spool in client.created_spools], [20, 21, 22])
+
+    def test_spool_creation_uses_fixed_one_kg_initial_weight_and_csv_remaining_weight(self) -> None:
+        client = FakeSpoolmanClient()
+
+        ThreeDfpImporter(client).apply(FIXTURE)
+
+        first_spool = client.created_spools[0]
+        self.assertEqual(first_spool.initial_weight, 1000)
+        self.assertEqual(first_spool.remaining_weight, 750)
+
+    def test_spool_weight_uses_empty_spool_weight_not_initial_weight(self) -> None:
+        client = FakeSpoolmanClient()
+
+        ThreeDfpImporter(client).apply(FIXTURE)
+
+        first_spool = client.created_spools[0]
+        self.assertEqual(first_spool.initial_weight, 1000)
+        self.assertEqual(first_spool.spool_weight, 140)
+        self.assertNotEqual(first_spool.spool_weight, first_spool.initial_weight)
 
     def test_apply_skips_spool_with_existing_3dfp_marker(self) -> None:
         vendor = Vendor(id=1, registered="2026-07-16T12:00:00Z", name="Polymaker", extra={})
