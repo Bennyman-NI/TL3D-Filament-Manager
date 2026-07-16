@@ -80,3 +80,32 @@ The response returns `status: "matched"` only when exactly one filament matches
 vendor, material, variant, and colour. If more than one filament remains, the
 service returns `status: "ambiguous"` with candidate filaments instead of
 silently selecting one.
+
+## Bridge PAX12 RFID log messages to the printer console
+
+Run the RFID matcher first, then start the PAX12 bridge. The bridge polls
+Moonraker's `klippy.log`, detects Bambu RFID lines, asks the local matcher for
+the matching filament, and sends an `M118` console message back through
+Moonraker.
+
+```powershell
+python -m app.rfid_service
+python -m app.pax12_bridge --printer-url http://localhost:7125
+```
+
+The default printer URL is `http://localhost:7125` and can also be set with the
+`TL3D_PRINTER_URL` environment variable. Override the matcher endpoint or poll
+interval when needed:
+
+```powershell
+python -m app.pax12_bridge `
+  --printer-url http://snapmaker.local:7125 `
+  --matcher-url http://localhost:8123/api/rfid/match `
+  --poll-seconds 2 `
+  --duplicate-cooldown-seconds 10
+```
+
+The bridge ignores historical RFID lines on startup, processes only new log
+content, suppresses immediate repeated copies of the same RFID event, and allows
+the same RFID event again after the duplicate cooldown or after a different RFID
+event is seen.
