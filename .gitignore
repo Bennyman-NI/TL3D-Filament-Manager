@@ -9,3 +9,9 @@ build/
 data/
 logs/
 import_reports/
+# Local Python environment
+.venv/
+
+# Personal 3D Filament Profiles exports
+my-spools.csv
+my-spools old.csv
