@@ -13,6 +13,40 @@ pip install -e .
 python -m app
 ```
 
+## Documentation
+
+- [Project overview](docs/project-overview.md)
+- [Architecture](docs/architecture.md)
+- [Requirements](docs/requirements.md)
+- [GUI design](docs/gui-design.md)
+- [Inventory and locations](docs/inventory-and-locations.md)
+- [RFID design](docs/rfid-design.md)
+- [Label printing](docs/label-printing.md)
+- [Roadmap](docs/roadmap.md)
+- [Decision log](docs/decision-log.md)
+- [Codex guidelines](docs/codex-guidelines.md)
+- [Spoolman API investigation](docs/spoolman-api-investigation.md)
+- [Next steps](docs/NEXT-STEPS.md)
+
+## Current Project Status
+
+- CSV / 3D Filament Profiles import: complete.
+- Spoolman import: complete.
+- Core dashboard: minimal PySide6 placeholder shell only; production dashboard not started.
+- RFID reader proof of concept: in progress under `tools/bambu_rfid_identifier/`.
+- Bambu tag UID reading: implemented in code and covered by mocked tests; awaiting real ACR1255U-J1 hardware verification.
+- Bambu tag decoding: not started.
+- Inventory locations: planned.
+- Label management: planned.
+- Costing: planned.
+- Shopify integration: future.
+
+## Development Workflow
+
+Design and requirements are maintained in this README and in `/docs`. Codex should implement small, focused tasks, update affected documentation with the implementation, and run practical tests before approval. Changes are reviewed before being committed, and real hardware tests are performed by the user where required.
+
+See [Codex guidelines](docs/codex-guidelines.md) for the working rules, including RFID read-only constraints.
+
 ## Capture your Spoolman REST API schema
 
 With Spoolman running at `http://localhost:7912`, capture the REST API v1 schema from
