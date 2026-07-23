@@ -21,6 +21,7 @@ python -m app
 - [GUI design](docs/gui-design.md)
 - [Inventory and locations](docs/inventory-and-locations.md)
 - [RFID design](docs/rfid-design.md)
+- [RFID references](docs/rfid-references.md)
 - [Label printing](docs/label-printing.md)
 - [Roadmap](docs/roadmap.md)
 - [Decision log](docs/decision-log.md)
@@ -33,9 +34,9 @@ python -m app
 - CSV / 3D Filament Profiles import: complete.
 - Spoolman import: complete.
 - Core dashboard: minimal PySide6 placeholder shell only; production dashboard not started.
-- RFID reader proof of concept: in progress under `tools/bambu_rfid_identifier/`.
-- Bambu tag UID reading: implemented in code and covered by mocked tests; awaiting real ACR1255U-J1 hardware verification.
-- Bambu tag decoding: not started.
+- RFID reader proof of concept: CLI and standalone PySide6 GUI implemented under `tools/bambu_rfid_identifier/`.
+- Bambu tag UID reading, standalone GUI updates, and authenticated read-only raw memory dumping: implemented in code and covered by mocked tests; awaiting real ACR1255U-J1 and genuine Bambu tag hardware verification.
+- Bambu tag decoding: not started beyond raw sector/block hex display.
 - Inventory locations: planned.
 - Label management: planned.
 - Costing: planned.

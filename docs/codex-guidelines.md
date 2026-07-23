@@ -24,3 +24,33 @@ Clearly report:
 - tests run
 - limitations
 - untested hardware assumptions
+
+## Completion Report
+
+Every implementation task should conclude with a structured completion report. Adapt the shape for documentation-only or investigation-only tasks, but keep the same information explicit where it applies.
+
+The report should contain:
+
+1. Summary of changes
+2. Files added
+3. Files modified
+4. Files deleted (if any)
+5. Tests executed
+6. Test results
+7. Tests not run, with the reason
+8. Manual testing still required
+9. Known limitations or assumptions
+10. Follow-up recommendations
+11. Suggested Git commit message
+
+For hardware-dependent work, call out:
+- hardware assumptions
+- verification completed
+- verification still required by the user
+
+Unless explicitly instructed:
+- Do not commit changes.
+- Do not push changes.
+- Do not merge pull requests.
+
+

@@ -10,7 +10,7 @@
 - Prevent duplicate spool imports using the original 3DFP spool UUID marker in the spool comment.
 - Match PAX12 RFID payloads against Spoolman filaments and active spools.
 - Bridge new PAX12 RFID log events from Moonraker to the local matcher.
-- Run a standalone read-only Bambu RFID identifier proof of concept with mocked tests for reader selection and UID handling.
+- Run a standalone read-only Bambu RFID identifier proof of concept with CLI and PySide6 GUI entry points, plus mocked tests for reader selection, UID handling, GUI monitor events, authenticated memory inspection, block formatting, failure reporting, and JSON serialization.
 
 ## Agreed functional requirements
 
@@ -32,10 +32,15 @@
 ## RFID/NFC requirements
 
 - RFID/NFC workflows use an ACS ACR1255U-J1 reader with NTAG215 tags.
+- Genuine Bambu filament RFID memory inspection targets MIFARE Classic 1K tags and must remain read-only.
 - Reusable-spool NFC tags belong to the physical spool.
 - Cardboard spools can receive disposable NFC stickers.
 - RFID scans must not silently select ambiguous matches.
 - RFID proof-of-concept work must remain read-only unless writing is explicitly authorised.
+- The standalone Bambu RFID identifier GUI must stay separate from the main TL3D Filament Manager GUI until integration is explicitly approved.
+- Standalone Bambu RFID raw memory dumps must include reader name, UID, ATR, sector number, block number, raw hexadecimal data where readable, read status, and failure messages.
+- Standalone Bambu RFID raw memory dumps must include schema version, creation timestamp, upstream reference, tag type where known, grouped sectors, grouped blocks, status/error data, and tool version.
+- Authenticated Bambu memory reads must be started explicitly in the standalone identifier GUI and must not freeze the GUI.
 
 ## Future label-printing requirements
 

@@ -9,6 +9,8 @@
 - Local RFID matcher.
 - PAX12 Moonraker log bridge.
 - Minimal PySide6 application shell.
+- Standalone Bambu RFID identifier CLI and PySide6 GUI proof of concept.
+- Standalone read-only Bambu RFID memory inspection with raw sector/block hex dumps.
 
 ## Phase 1: Core inventory workflow
 
@@ -20,7 +22,7 @@
 
 ## Phase 2: RFID and location operations
 
-- Build the standalone Bambu RFID identifier proof of concept.
+- Verify the standalone Bambu RFID identifier proof of concept with real ACR1255U-J1 hardware.
 - Integrate the ACS ACR1255U-J1 reader after standalone proof-of-concept hardware verification.
 - Read NTAG215 spool tags.
 - Assign reusable-spool tags to physical spools.
@@ -32,10 +34,10 @@
 
 - PC/SC reader detection: implemented in code and verified by automated tests where practical; awaiting real ACR1255U-J1 hardware verification.
 - ATR and UID reading: implemented in code and verified by automated tests with mocked PC/SC objects; awaiting real tag hardware verification.
+- Standalone identifier window: implemented in code and verified by automated tests with mocked PC/SC objects; awaiting real tag hardware verification.
+- Bambu sector authentication and raw memory inspection: implemented in code and verified by automated tests with mocked PC/SC objects; awaiting real ACR1255U-J1 and genuine Bambu tag hardware verification.
 - Real ACR1255U-J1 hardware verification: awaiting user hardware test.
-- Bambu sector authentication: not started.
-- Bambu tag decoding: not started.
-- Standalone identifier window: not started.
+- Bambu tag decoding beyond raw hexadecimal block display: not started.
 - Later main application integration: future; do not integrate until the standalone tool is proven reliable.
 
 ## Phase 3: Workshop intelligence

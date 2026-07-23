@@ -14,6 +14,9 @@ This tool is intentionally standalone and is not integrated into the TL3D Filame
 - Detects tag removal.
 - Avoids repeatedly reporting the same tag while it remains present.
 - Reports missing readers, connection errors, and unsupported tags clearly.
+- Provides a standalone PySide6 GUI with reader connection status, reader name, current status, UID, and ATR.
+- Authenticates genuine Bambu MIFARE Classic 1K sectors with documented UID-derived keys and reads raw blocks without writing to the tag.
+- Displays raw sector/block data and allows timestamped JSON dump saving.
 
 ## Requirements
 
@@ -21,6 +24,7 @@ This tool is intentionally standalone and is not integrated into the TL3D Filame
 - ACS ACR1255U-J1 paired/connected and visible through PC/SC.
 - Python 3.12 or later.
 - `pyscard`.
+- `PySide6`.
 
 The ACS driver stack must expose the reader to PC/SC. If no readers are listed, fix Windows/driver/connection setup before debugging this script.
 
@@ -64,6 +68,42 @@ python .\tools\bambu_rfid_identifier\identify_tag.py --any-reader
 
 Stop with `Ctrl+C`.
 
+## GUI usage
+
+Run the standalone PySide6 window:
+
+```powershell
+python .\tools\bambu_rfid_identifier\gui.py
+```
+
+Use a different reader-name substring if Windows exposes the reader under a different name:
+
+```powershell
+python .\tools\bambu_rfid_identifier\gui.py --reader-name ACR1255
+```
+
+Use any available reader for development:
+
+```powershell
+python .\tools\bambu_rfid_identifier\gui.py --any-reader
+```
+
+The GUI updates automatically when a tag is presented or removed. When a tag is removed, the status changes to `Tag removed` while the last successfully read UID and ATR remain visible for reference. UID and ATR are cleared when the reader monitor restarts, the reader disconnects, or a later successful tag read replaces them.
+
+After a genuine Bambu tag UID is visible, click `Read Bambu Tag` to start an authenticated raw memory read. The read runs in a background Qt worker so the GUI remains responsive. Results are displayed by sector and block. `Save raw dump` is enabled after a read attempt produces dump data and writes a timestamped JSON file containing the reader name, UID, ATR, upstream reference, sector/block statuses, raw hex data where readable, and errors where unreadable.
+
+The GUI reuses the same read-only PC/SC detection and UID-reading logic as `identify_tag.py`; it does not write, clone, emulate, change keys, change UIDs, or modify tags.
+
+## Bambu memory inspection
+
+Authenticated reads use the published `queengooborg/Bambu-Lab-RFID-Tag-Guide` research:
+
+- `deriveKeys.py` for UID-based HKDF-SHA256 sector-key derivation.
+- `docs/ReadTags.md` for the documented readout workflow.
+- `docs/BambuLabRfid.md` for the raw block layout reference.
+
+The implementation is an original Python standard-library implementation of the documented algorithm. It stores derived keys only in memory for the current read. Raw memory is displayed as hexadecimal blocks only; decoding material, colour, temperatures, and other filament fields is a later milestone.
+
 ## Development checks
 
 The unit tests use mocked PC/SC objects and do not require a reader or tag:
@@ -87,7 +127,7 @@ Run automated checks:
 
 ```powershell
 py -3.14 -m unittest discover -s .\tools\bambu_rfid_identifier -v
-py -3.14 -m py_compile tools\bambu_rfid_identifier\identify_tag.py tools\bambu_rfid_identifier\test_identify_tag.py
+py -3.14 -m py_compile tools\bambu_rfid_identifier\identify_tag.py tools\bambu_rfid_identifier\memory_inspector.py tools\bambu_rfid_identifier\rfid_monitor.py tools\bambu_rfid_identifier\gui.py tools\bambu_rfid_identifier\test_identify_tag.py tools\bambu_rfid_identifier\test_memory_inspector.py tools\bambu_rfid_identifier\test_gui.py
 ```
 
 Launch the reader diagnostic tool:
@@ -127,7 +167,9 @@ Expected Phase 1 hardware result:
 - Derive required authentication keys from UID.
 - Authenticate required sectors.
 - Read tag memory using read-only commands.
-- Status: not started.
+- Display raw sector/block hex data.
+- Save timestamped JSON dumps.
+- Status: implemented, awaiting real hardware verification.
 
 ### Phase 3 - Bambu data decoding
 
@@ -147,7 +189,7 @@ Jade White
 ```
 
 - Must not rely on colour alone for status because the user is colour blind.
-- Status: not started.
+- Status: implemented, awaiting real hardware verification.
 
 ### Phase 5 - Main application integration
 

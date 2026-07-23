@@ -15,3 +15,10 @@ import_reports/
 # Personal 3D Filament Profiles exports
 my-spools.csv
 my-spools old.csv
+# RFID dump files
+dumps/raw/*
+dumps/decoded/*
+
+# Keep the folders
+!dumps/raw/.gitkeep
+!dumps/decoded/.gitkeep

@@ -71,3 +71,27 @@ Decision: Relevant Codex tasks must update documentation and roadmap status when
 Reason: The project is evolving through focused tasks, so README and `/docs` need to remain the reliable source of current design and implementation status.
 
 Status: Active process rule.
+
+## 2026-07-23: Standalone RFID GUI uses existing read-only logic
+
+Decision: The Bambu RFID identifier GUI is a standalone PySide6 tool under `tools/bambu_rfid_identifier/` and reuses the existing PC/SC reader selection, card observer, and UID-read logic from `identify_tag.py`.
+
+Reason: This gives live reader and tag status without integrating RFID proof-of-concept behavior into the main TL3D Filament Manager GUI or duplicating RFID operations.
+
+Status: Implemented in code; awaiting real hardware verification.
+
+## 2026-07-23: Standard Codex completion reports
+
+Decision: Codex implementation tasks should end with a structured completion report covering changes, file additions/modifications/deletions, tests run or skipped, manual verification needs, limitations, follow-ups, and a suggested commit message.
+
+Reason: Consistent completion reports make review easier and keep hardware, testing, and commit readiness visible.
+
+Status: Active process rule.
+
+## 2026-07-23: Read-only Bambu RFID memory inspection
+
+Decision: The standalone Bambu RFID identifier may derive public Bambu sector keys using the documented `queengooborg/Bambu-Lab-RFID-Tag-Guide` algorithm and read raw MIFARE Classic 1K blocks, but it must not write, clone, emulate, brute-force, or modify tags.
+
+Reason: Raw authenticated reads are needed to compare genuine Bambu tags while preserving the safety boundary around RFID proof-of-concept work.
+
+Status: Implemented in code with mocked tests; awaiting real Bambu tag hardware verification.

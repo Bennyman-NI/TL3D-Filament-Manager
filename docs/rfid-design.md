@@ -11,12 +11,24 @@
 - Historical RFID lines are ignored on bridge startup.
 - Immediate duplicate events are suppressed with a configurable cooldown.
 - Matched RFID events are sent to the printer console through Moonraker.
-- `tools/bambu_rfid_identifier/` provides a standalone read-only PC/SC proof of concept for reader detection, ATR display, UID reading, tag removal, and duplicate-present suppression.
+- `tools/bambu_rfid_identifier/` provides a standalone read-only PC/SC proof of concept for reader detection, ATR display, UID reading, tag removal, duplicate-present suppression, authenticated Bambu MIFARE Classic 1K memory inspection, timestamped JSON dumps, and a live PySide6 identifier window.
 
 ## Agreed hardware
 
 - Reader: ACS ACR1255U-J1.
-- Tags: NTAG215.
+- TL3D-owned NFC tags: NTAG215.
+- Genuine Bambu spool RFID tags inspected by the standalone proof of concept: MIFARE Classic 1K.
+
+## Bambu tag memory inspection
+
+- Key derivation follows the public `queengooborg/Bambu-Lab-RFID-Tag-Guide` `deriveKeys.py` algorithm: HKDF-SHA256 using the tag UID, the documented 16-byte salt, and the `RFID-A\0` / `RFID-B\0` contexts.
+- The raw block map reference is `docs/BambuLabRfid.md`; readout workflow context comes from `docs/ReadTags.md`.
+- The standalone tool loads derived Key A values into the reader session, authenticates sectors with Key A, and reads blocks with PC/SC read commands.
+- The tool records authentication failures, unreadable blocks, reader errors, and partial reads per block.
+- Manufacturer blocks and sector trailers are included in the table and JSON dump when readable, but the tool never writes to any tag block.
+- The GUI starts raw reads only from the standalone tool's `Read Bambu Tag` button and runs the dump worker off the UI thread.
+- See `docs/rfid-references.md` for source and licence notes.
+- Decoding material, colour, temperatures, and other filament fields is intentionally deferred until raw reading is proven on real hardware.
 
 ## Tag ownership rules
 
