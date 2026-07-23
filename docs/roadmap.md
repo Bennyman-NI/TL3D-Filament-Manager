@@ -11,6 +11,7 @@
 - Minimal PySide6 application shell.
 - Standalone Bambu RFID identifier CLI and PySide6 GUI proof of concept.
 - Standalone read-only Bambu RFID memory inspection with raw sector/block hex dumps.
+- Saved Bambu RFID raw dump decoder for documented fields.
 
 ## Phase 1: Core inventory workflow
 
@@ -37,7 +38,8 @@
 - Standalone identifier window: implemented in code and verified by automated tests with mocked PC/SC objects; awaiting real tag hardware verification.
 - Bambu sector authentication and raw memory inspection: implemented in code and verified by automated tests with mocked PC/SC objects; awaiting real ACR1255U-J1 and genuine Bambu tag hardware verification.
 - Real ACR1255U-J1 hardware verification: awaiting user hardware test.
-- Bambu tag decoding beyond raw hexadecimal block display: not started.
+- Bambu saved-dump decoding: implemented for documented fields and verified with synthetic tests; awaiting validation against Trevor's real saved Bambu dumps.
+- Bambu tag decoding beyond documented raw dump fields: future.
 - Later main application integration: future; do not integrate until the standalone tool is proven reliable.
 
 ## Phase 3: Workshop intelligence

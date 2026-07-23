@@ -12,7 +12,7 @@ TL3D Filament Manager is the workshop intelligence and user-interface layer for 
 - Import reports written as JSON and TXT.
 - Local RFID matching HTTP service for PAX12/Bambu-style RFID payloads.
 - PAX12 bridge that polls Moonraker `klippy.log` and sends matched filament messages back to the printer console.
-- Standalone Bambu RFID identifier proof of concept for read-only PC/SC reader diagnostics, UID reading, authenticated raw memory dumping, JSON dump saving, and live PySide6 status display.
+- Standalone Bambu RFID identifier proof of concept for read-only PC/SC reader diagnostics, UID reading, authenticated raw memory dumping, JSON dump saving, saved-dump decoding, and live PySide6 status display.
 
 ## Agreed system roles
 

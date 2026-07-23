@@ -28,7 +28,14 @@
 - Manufacturer blocks and sector trailers are included in the table and JSON dump when readable, but the tool never writes to any tag block.
 - The GUI starts raw reads only from the standalone tool's `Read Bambu Tag` button and runs the dump worker off the UI thread.
 - See `docs/rfid-references.md` for source and licence notes.
-- Decoding material, colour, temperatures, and other filament fields is intentionally deferred until raw reading is proven on real hardware.
+
+## Saved dump decoding
+
+- `tools/bambu_rfid_identifier/decoder.py` decodes saved raw dump JSON files without an RFID reader.
+- `tools/bambu_rfid_identifier/decode_dump.py` provides `python -m tools.bambu_rfid_identifier.decode_dump path\to\dump.json` with text output and optional `--json`.
+- The decoder supports only documented fields from `docs/BambuLabRfid.md`, including tray/material IDs, filament type, detailed filament type, colour RGBA, spool weight, filament diameter, drying settings, temperature settings, X Cam bytes, minimum nozzle diameter, tray UID, spool width, production date strings, and extra colour info.
+- Unknown, reserved, uncertain filament-length, MIFARE trailer, and RSA signature bytes remain preserved as raw hex.
+- The decoder does not generate signatures, bypass signatures, create tags, modify tags, or integrate decoded data into Spoolman or the main TL3D GUI.
 
 ## Tag ownership rules
 

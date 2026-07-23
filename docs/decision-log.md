@@ -95,3 +95,11 @@ Decision: The standalone Bambu RFID identifier may derive public Bambu sector ke
 Reason: Raw authenticated reads are needed to compare genuine Bambu tags while preserving the safety boundary around RFID proof-of-concept work.
 
 Status: Implemented in code with mocked tests; awaiting real Bambu tag hardware verification.
+
+## 2026-07-23: Saved Bambu RFID dumps decode separately from scanning
+
+Decision: Bambu RFID field decoding is implemented as a reusable saved-dump decoder separate from the RFID reader, standalone GUI, Spoolman, inventory workflows, and the main TL3D GUI.
+
+Reason: Decoding saved JSON files keeps the workflow read-only, allows validation without hardware, and avoids coupling uncertain tag-field work to operational inventory features.
+
+Status: Implemented for documented fields with synthetic tests; awaiting validation against real saved dumps.

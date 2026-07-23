@@ -17,6 +17,7 @@ This tool is intentionally standalone and is not integrated into the TL3D Filame
 - Provides a standalone PySide6 GUI with reader connection status, reader name, current status, UID, and ATR.
 - Authenticates genuine Bambu MIFARE Classic 1K sectors with documented UID-derived keys and reads raw blocks without writing to the tag.
 - Displays raw sector/block data and allows timestamped JSON dump saving.
+- Decodes saved raw dump JSON files into documented Bambu fields without needing an RFID reader.
 
 ## Requirements
 
@@ -104,6 +105,24 @@ Authenticated reads use the published `queengooborg/Bambu-Lab-RFID-Tag-Guide` re
 
 The implementation is an original Python standard-library implementation of the documented algorithm. It stores derived keys only in memory for the current read. Raw memory is displayed as hexadecimal blocks only; decoding material, colour, temperatures, and other filament fields is a later milestone.
 
+## Decode a saved dump
+
+Decode an existing raw dump without connecting the RFID reader:
+
+```powershell
+python -m tools.bambu_rfid_identifier.decode_dump path\to\bambu_rfid_dump.json
+```
+
+Print structured JSON instead of text:
+
+```powershell
+python -m tools.bambu_rfid_identifier.decode_dump path\to\bambu_rfid_dump.json --json
+```
+
+The decoder currently supports documented fields from `docs/BambuLabRfid.md`: tray/material IDs, filament type, detailed filament type, primary colour RGBA, spool weight, filament diameter, drying settings, bed/hotend temperatures, X Cam bytes, minimum nozzle diameter, tray UID, spool width, production date strings, and documented extra colour info. Unknown, reserved, MIFARE trailer, uncertain filament-length, and RSA signature bytes are preserved as raw hex for later analysis.
+
+The decoder is read-only and works from saved JSON only. It does not generate, sign, modify, clone, or emulate tags.
+
 ## Development checks
 
 The unit tests use mocked PC/SC objects and do not require a reader or tag:
@@ -127,7 +146,7 @@ Run automated checks:
 
 ```powershell
 py -3.14 -m unittest discover -s .\tools\bambu_rfid_identifier -v
-py -3.14 -m py_compile tools\bambu_rfid_identifier\identify_tag.py tools\bambu_rfid_identifier\memory_inspector.py tools\bambu_rfid_identifier\rfid_monitor.py tools\bambu_rfid_identifier\gui.py tools\bambu_rfid_identifier\test_identify_tag.py tools\bambu_rfid_identifier\test_memory_inspector.py tools\bambu_rfid_identifier\test_gui.py
+py -3.14 -m py_compile tools\bambu_rfid_identifier\identify_tag.py tools\bambu_rfid_identifier\memory_inspector.py tools\bambu_rfid_identifier\decoder.py tools\bambu_rfid_identifier\decode_dump.py tools\bambu_rfid_identifier\rfid_monitor.py tools\bambu_rfid_identifier\gui.py tools\bambu_rfid_identifier\test_identify_tag.py tools\bambu_rfid_identifier\test_memory_inspector.py tools\bambu_rfid_identifier\test_decoder.py tools\bambu_rfid_identifier\test_gui.py
 ```
 
 Launch the reader diagnostic tool:
@@ -173,11 +192,9 @@ Expected Phase 1 hardware result:
 
 ### Phase 3 - Bambu data decoding
 
-- Decode product family.
-- Decode material.
-- Decode colour.
-- Decode other useful spool metadata.
-- Status: not started.
+- Decode documented raw dump fields from saved JSON.
+- Preserve unknown and undocumented bytes.
+- Status: implemented for documented fields, awaiting validation against real-world saved dumps.
 
 ### Phase 4 - Identifier window
 

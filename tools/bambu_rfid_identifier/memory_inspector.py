@@ -10,7 +10,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
-import identify_tag
+try:
+    from . import identify_tag
+except ImportError:  # pragma: no cover - supports direct script execution
+    import identify_tag
 
 
 SCHEMA_VERSION = 1

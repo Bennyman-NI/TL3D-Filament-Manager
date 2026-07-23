@@ -41,6 +41,9 @@
 - Standalone Bambu RFID raw memory dumps must include reader name, UID, ATR, sector number, block number, raw hexadecimal data where readable, read status, and failure messages.
 - Standalone Bambu RFID raw memory dumps must include schema version, creation timestamp, upstream reference, tag type where known, grouped sectors, grouped blocks, status/error data, and tool version.
 - Authenticated Bambu memory reads must be started explicitly in the standalone identifier GUI and must not freeze the GUI.
+- Saved Bambu RFID raw dump JSON files must be decodable without a reader connection.
+- Decoding must report malformed JSON, unsupported schema versions, missing sectors or blocks, invalid hex data, unreadable blocks, and incomplete dumps without crashing.
+- Unknown or undocumented Bambu RFID bytes must remain available as raw hex and must not be guessed.
 
 ## Future label-printing requirements
 

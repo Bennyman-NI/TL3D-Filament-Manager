@@ -20,6 +20,8 @@ Implementation notes:
 - No upstream source file was copied into this repository.
 - The standalone RFID identifier stores upstream attribution in saved JSON dumps.
 - The tool uses only read-oriented PC/SC operations: reader-session key load, sector authentication, and block read.
+- The saved-dump decoder independently implements documented field offsets and data types from `docs/BambuLabRfid.md`.
+- Unknown, reserved, uncertain, MIFARE trailer, and RSA signature bytes are preserved as raw data rather than guessed.
 - Tag writing, cloning, emulation, UID changing, sector trailer modification, key changing, and brute-force key searching remain out of scope.
 
 Licence implications:

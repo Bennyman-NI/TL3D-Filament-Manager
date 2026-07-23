@@ -8,7 +8,7 @@
 - `app/rfid_service.py`: local HTTP RFID matcher at `/api/rfid/match`.
 - `app/pax12_bridge.py`: Moonraker log bridge for PAX12 RFID events.
 - `scripts/capture_spoolman_schema.ps1`: captures and validates the Spoolman OpenAPI schema.
-- `tools/bambu_rfid_identifier/`: standalone read-only PC/SC proof of concept for ACR1255U-J1 reader diagnostics, Bambu RFID raw memory dumping, timestamped JSON dumps, and CLI/PySide6 GUI entry points.
+- `tools/bambu_rfid_identifier/`: standalone read-only PC/SC proof of concept for ACR1255U-J1 reader diagnostics, Bambu RFID raw memory dumping, timestamped JSON dumps, saved-dump decoding, and CLI/PySide6 GUI entry points.
 
 ## Data flow
 
