@@ -7,8 +7,9 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from . import memory_inspector
+    from . import bambu_catalogue, memory_inspector
 except ImportError:  # pragma: no cover - supports direct script-style imports in tests
+    import bambu_catalogue
     import memory_inspector
 
 
@@ -16,6 +17,8 @@ SUPPORTED_SCHEMA_VERSION = 1
 BLOCK_SIZE_BYTES = 16
 TRAILER_BLOCK_INDEX = 3
 SIGNATURE_SECTORS = set(range(10, 16))
+RSA_SIGNATURE_EXPECTED_LENGTH_BYTES = 256
+RSA_SIGNATURE_PAYLOAD_BLOCK_COUNT = RSA_SIGNATURE_EXPECTED_LENGTH_BYTES // BLOCK_SIZE_BYTES
 
 
 @dataclass(frozen=True)
@@ -46,10 +49,34 @@ class RawField:
 
 
 @dataclass(frozen=True)
+class RsaSignatureBlock:
+    sector: int
+    block: int
+    absolute_block: int
+    role: str
+    status: str
+    data_hex: str | None
+    error: str | None
+    included_in_signature_hex: bool
+
+
+@dataclass(frozen=True)
+class RsaSignature:
+    status: str
+    expected_length_bytes: int
+    available_length_bytes: int
+    hex: str
+    verified: bool
+    verification_status: str
+    blocks: list[RsaSignatureBlock] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
 class DecodedDump:
     metadata: DecodedMetadata
     fields: list[DecodedField] = field(default_factory=list)
     raw_unknown: list[RawField] = field(default_factory=list)
+    rsa_signature: RsaSignature | None = None
     warnings: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
@@ -107,6 +134,8 @@ def decode_dump_dict(payload: dict[str, Any], initial_errors: list[str] | None =
     result = DecodedDump(metadata=metadata, warnings=warnings, errors=errors)
 
     decode_documented_fields(block_lookup, result)
+    resolve_catalogue_fields(result)
+    object.__setattr__(result, "rsa_signature", assemble_rsa_signature(block_lookup, result))
     preserve_known_raw_regions(block_lookup, result)
     return result
 
@@ -283,8 +312,101 @@ def add_field(result: DecodedDump, name: str, value: object, block: BlockBytes, 
     result.fields.append(DecodedField(name=name, value=value, source=block.source, description=description))
 
 
+def add_resolved_field(result: DecodedDump, name: str, value: object, source: str, description: str) -> None:
+    result.fields.append(DecodedField(name=name, value=value, source=source, description=description))
+
+
 def add_unknown(result: DecodedDump, name: str, block: BlockBytes, reason: str) -> None:
     result.raw_unknown.append(RawField(name=name, source=block.source, data_hex=block.data_hex, reason=reason))
+
+
+def resolve_catalogue_fields(result: DecodedDump) -> None:
+    match = bambu_catalogue.resolve_catalogue({item.name: item.value for item in result.fields})
+    if match.warning:
+        result.warnings.append(match.warning)
+
+    source = f"bambu catalogue resolver: {match.source}"
+    add_resolved_field(result, "manufacturer", match.manufacturer, source, "Resolved manufacturer.")
+    add_resolved_field(result, "catalogue_name", match.catalogue_name, source, "Resolved official Bambu catalogue name.")
+    add_resolved_field(result, "material_name", match.material_name, source, "Resolved official material name.")
+    add_resolved_field(result, "color_name", match.color_name, source, "Resolved official colour name.")
+    add_resolved_field(result, "catalogue_match_status", match.status, source, "Catalogue match status.")
+    add_resolved_field(result, "catalogue_match_source", match.source, source, "Catalogue match source.")
+
+
+def assemble_rsa_signature(
+    blocks: dict[tuple[int, int], BlockBytes],
+    result: DecodedDump,
+) -> RsaSignature:
+    ordered_positions = [(sector, block) for sector in range(10, 16) for block in range(4)]
+    payload_positions = [(sector, block) for sector, block in ordered_positions if block != TRAILER_BLOCK_INDEX]
+    required_positions = set(payload_positions[:RSA_SIGNATURE_PAYLOAD_BLOCK_COUNT])
+    block_records: list[RsaSignatureBlock] = []
+    chunks: list[bytes] = []
+    missing_required: list[str] = []
+
+    for sector, block in ordered_positions:
+        block_data = blocks.get((sector, block))
+        if block == TRAILER_BLOCK_INDEX:
+            role = "mifare_sector_trailer"
+        elif (sector, block) in required_positions:
+            role = "rsa_signature_payload"
+        else:
+            role = "rsa_signature_region_extra"
+
+        if block_data is None:
+            block_records.append(
+                RsaSignatureBlock(
+                    sector=sector,
+                    block=block,
+                    absolute_block=sector * 4 + block,
+                    role=role,
+                    status="missing",
+                    data_hex=None,
+                    error=None,
+                    included_in_signature_hex=False,
+                )
+            )
+            if role == "rsa_signature_payload":
+                missing_required.append(f"sector {sector} block {block}")
+            continue
+
+        include = role == "rsa_signature_payload" and block_data.data is not None and len(block_data.data) == BLOCK_SIZE_BYTES
+        if include:
+            assert block_data.data is not None
+            chunks.append(block_data.data)
+        elif role == "rsa_signature_payload":
+            missing_required.append(block_data.source)
+
+        block_records.append(
+            RsaSignatureBlock(
+                sector=block_data.sector,
+                block=block_data.block,
+                absolute_block=block_data.absolute_block,
+                role=role,
+                status=block_data.status,
+                data_hex=block_data.data_hex,
+                error=block_data.error,
+                included_in_signature_hex=include,
+            )
+        )
+
+    signature_bytes = b"".join(chunks)
+    complete = not missing_required and len(signature_bytes) == RSA_SIGNATURE_EXPECTED_LENGTH_BYTES
+    if not complete:
+        result.warnings.append(
+            "RSA signature data is partial; cryptographic verification was not performed."
+        )
+
+    return RsaSignature(
+        status="complete" if complete else "partial",
+        expected_length_bytes=RSA_SIGNATURE_EXPECTED_LENGTH_BYTES,
+        available_length_bytes=len(signature_bytes),
+        hex=signature_bytes.hex().upper(),
+        verified=False,
+        verification_status="not_implemented",
+        blocks=block_records,
+    )
 
 
 def add_string(
@@ -445,6 +567,16 @@ def format_human_readable(decoded: DecodedDump) -> str:
         lines.append("Decoded fields:")
         for item in decoded.fields:
             lines.append(f"- {item.name}: {item.value} ({item.source})")
+    if decoded.rsa_signature:
+        lines.append("")
+        lines.append("RSA signature:")
+        lines.append(f"- status: {decoded.rsa_signature.status}")
+        lines.append(
+            f"- bytes: {decoded.rsa_signature.available_length_bytes}/"
+            f"{decoded.rsa_signature.expected_length_bytes}"
+        )
+        lines.append(f"- verified: {decoded.rsa_signature.verified}")
+        lines.append(f"- verification_status: {decoded.rsa_signature.verification_status}")
     if decoded.raw_unknown:
         lines.append("")
         lines.append("Preserved raw/unknown data:")

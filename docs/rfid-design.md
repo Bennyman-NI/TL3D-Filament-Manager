@@ -34,7 +34,10 @@
 - `tools/bambu_rfid_identifier/decoder.py` decodes saved raw dump JSON files without an RFID reader.
 - `tools/bambu_rfid_identifier/decode_dump.py` provides `python -m tools.bambu_rfid_identifier.decode_dump path\to\dump.json` with text output and optional `--json`.
 - The decoder supports only documented fields from `docs/BambuLabRfid.md`, including tray/material IDs, filament type, detailed filament type, colour RGBA, spool weight, filament diameter, drying settings, temperature settings, X Cam bytes, minimum nozzle diameter, tray UID, spool width, production date strings, and extra colour info.
-- Unknown, reserved, uncertain filament-length, MIFARE trailer, and RSA signature bytes remain preserved as raw hex.
+- The decoder resolves exact Bambu catalogue names from validated identifier mappings in `tools/bambu_rfid_identifier/bambu_catalogue.py`. RGBA is used to validate an identifier match, but unknown identifiers are not named from RGB alone.
+- Sectors 10 through 15 are represented as an RSA signature region with block-level provenance. MIFARE trailer blocks remain separate trailers and are excluded from signature payload bytes.
+- Signature bytes are preserved for comparison only. The decoder reports `verified: false` and `verification_status: not_implemented` because it does not verify against a confirmed Bambu public key.
+- Unknown, reserved, uncertain filament-length, MIFARE trailer, and RSA signature region bytes remain preserved as raw hex.
 - The decoder does not generate signatures, bypass signatures, create tags, modify tags, or integrate decoded data into Spoolman or the main TL3D GUI.
 
 ## Tag ownership rules

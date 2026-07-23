@@ -111,3 +111,19 @@ Decision: The saved-dump decoder reads filament diameter from sector 1 block 1, 
 Reason: The upstream Bambu RFID layout marks the field as `float (LE)` but lists length `8`. Validation against a genuine Bambu PLA Basic Blue dump showed bytes `00 00 E0 3F` at the documented offset, which decode to 1.75 mm as a 32-bit little-endian float. Reading eight bytes as a double consumed adjacent reserved bytes and produced the near-zero regression value.
 
 Status: Implemented and covered by mocked decoder tests; broader real-dump validation remains useful.
+
+## 2026-07-23: Bambu catalogue resolution is identifier-first
+
+Decision: The saved-dump decoder resolves official Bambu filament names through a separate catalogue module seeded from validated local dump samples and known spool labels.
+
+Reason: Marketed names such as Pumpkin Orange, Hot Pink, Desert Tan, Charcoal, and Terracotta cannot be safely inferred from generic RGB colour families. Stable tray material IDs, tray variant IDs, filament type, detailed filament type, and RGBA validation provide safer exact matching.
+
+Status: Implemented for the current validated local dump dataset.
+
+## 2026-07-23: RSA signature bytes are assembled but not verified
+
+Decision: The saved-dump decoder exposes sectors 10 through 15 as an RSA signature region, excludes MIFARE sector trailers from signature payload bytes, and reports signature verification as not implemented.
+
+Reason: Public Bambu RFID documentation identifies the region as an RSA-2048 signature generated with Bambu Lab's private key, but TL3D does not currently have or use a confirmed Bambu public key for verification. Preserving and assembling bytes is useful for comparison, but should not imply authenticity.
+
+Status: Implemented as read-only metadata.

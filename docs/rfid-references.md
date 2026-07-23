@@ -22,7 +22,10 @@ Implementation notes:
 - The tool uses only read-oriented PC/SC operations: reader-session key load, sector authentication, and block read.
 - The saved-dump decoder independently implements documented field offsets and data types from `docs/BambuLabRfid.md`.
 - Real-dump validation with a genuine Bambu PLA Basic Blue tag confirmed filament diameter at sector 1 block 1, offset 8 as a 4-byte little-endian IEEE-754 float. The upstream table marks the field as `float (LE)` but lists length `8`; TL3D treats the numeric representation as authoritative and reads 4 bytes so adjacent reserved bytes are not consumed.
-- Unknown, reserved, uncertain, MIFARE trailer, and RSA signature bytes are preserved as raw data rather than guessed.
+- The upstream block overview identifies sectors 10 through 15 as the RSA-2048 signature region, while also documenting that every fourth block remains a MIFARE sector trailer unrelated to Bambu's memory format. TL3D excludes sector trailer blocks from assembled signature payload bytes.
+- The upstream README describes the signature as generated with Bambu Lab's private key and checked by Bambu printers. TL3D preserves and assembles signature bytes for comparison only; it does not verify the signature or claim cryptographic validity.
+- Unknown, reserved, uncertain, MIFARE trailer, and RSA signature region bytes are preserved as raw data rather than guessed.
+- Exact Bambu catalogue-name resolution is seeded only from locally validated genuine saved dumps and known spool labels. Matching is identifier-first using tray material ID, tray variant ID, filament type, detailed filament type, and RGBA as validation; unknown identifiers remain unknown rather than being guessed from colour.
 - Tag writing, cloning, emulation, UID changing, sector trailer modification, key changing, and brute-force key searching remain out of scope.
 
 Licence implications:

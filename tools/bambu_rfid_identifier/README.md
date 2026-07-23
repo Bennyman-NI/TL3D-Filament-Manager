@@ -17,7 +17,7 @@ This tool is intentionally standalone and is not integrated into the TL3D Filame
 - Provides a standalone PySide6 GUI with reader connection status, reader name, current status, UID, and ATR.
 - Authenticates genuine Bambu MIFARE Classic 1K sectors with documented UID-derived keys and reads raw blocks without writing to the tag.
 - Displays raw sector/block data and allows timestamped JSON dump saving.
-- Decodes saved raw dump JSON files into documented Bambu fields without needing an RFID reader.
+- Decodes saved raw dump JSON files into documented Bambu fields, RSA signature metadata, and validated exact Bambu catalogue names without needing an RFID reader.
 
 ## Requirements
 
@@ -119,7 +119,13 @@ Print structured JSON instead of text:
 python -m tools.bambu_rfid_identifier.decode_dump path\to\bambu_rfid_dump.json --json
 ```
 
-The decoder currently supports documented fields from `docs/BambuLabRfid.md`: tray/material IDs, filament type, detailed filament type, primary colour RGBA, spool weight, filament diameter, drying settings, bed/hotend temperatures, X Cam bytes, minimum nozzle diameter, tray UID, spool width, production date strings, and documented extra colour info. Filament diameter is decoded from sector 1 block 1 offset 8 as a 4-byte little-endian IEEE-754 float; this follows the upstream `float (LE)` type and real Bambu PLA Basic Blue dump validation. Unknown, reserved, MIFARE trailer, uncertain filament-length, and RSA signature bytes are preserved as raw hex for later analysis.
+The decoder currently supports documented fields from `docs/BambuLabRfid.md`: tray/material IDs, filament type, detailed filament type, primary colour RGBA, spool weight, filament diameter, drying settings, bed/hotend temperatures, X Cam bytes, minimum nozzle diameter, tray UID, spool width, production date strings, and documented extra colour info. Filament diameter is decoded from sector 1 block 1 offset 8 as a 4-byte little-endian IEEE-754 float; this follows the upstream `float (LE)` type and real Bambu PLA Basic Blue dump validation.
+
+The decoder also resolves exact official Bambu names from the validated local catalogue in `bambu_catalogue.py`. It prefers tray material ID and tray variant ID, checks filament type and detailed filament type, and uses RGBA as validation. Unknown identifier combinations are reported as `unknown` instead of being guessed from colour.
+
+Sectors 10 through 15 are represented as an RSA signature region with block-level provenance. MIFARE sector trailers remain trailer blocks and are excluded from signature payload bytes. The decoder preserves signature bytes for comparison but reports `verified: false` and `verification_status: not_implemented`; it does not cryptographically verify authenticity.
+
+Unknown, reserved, MIFARE trailer, uncertain filament-length, and RSA signature region bytes are preserved as raw hex for later analysis.
 
 The decoder is read-only and works from saved JSON only. It does not generate, sign, modify, clone, or emulate tags.
 
@@ -194,7 +200,9 @@ Expected Phase 1 hardware result:
 
 - Decode documented raw dump fields from saved JSON.
 - Preserve unknown and undocumented bytes.
-- Status: implemented for documented fields and validated against one genuine PLA Basic Blue saved dump; broader real-world saved-dump validation pending.
+- Resolve exact validated Bambu catalogue names from stable identifiers.
+- Represent RSA signature bytes without verification claims.
+- Status: implemented for documented fields and current validated local dump samples; broader real-world saved-dump validation pending.
 
 ### Phase 4 - Identifier window
 

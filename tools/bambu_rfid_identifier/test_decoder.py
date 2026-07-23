@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import bambu_catalogue
 import decoder
 import memory_inspector
 
@@ -19,7 +20,7 @@ class DecoderTests(unittest.TestCase):
         fields = field_values(decoded)
 
         self.assertEqual(decoded.errors, [])
-        self.assertEqual(fields["tray_info_variant_id"], "A00-K0")
+        self.assertEqual(fields["tray_info_variant_id"], "A00-B9")
         self.assertEqual(fields["tray_info_material_id"], "GFA00")
         self.assertEqual(fields["filament_type"], "PLA")
         self.assertEqual(fields["detailed_filament_type"], "PLA Basic")
@@ -40,6 +41,12 @@ class DecoderTests(unittest.TestCase):
         self.assertEqual(fields["extra_color_format_identifier"], 2)
         self.assertEqual(fields["extra_color_count"], 2)
         self.assertEqual(fields["second_color_rgba"]["hex"], "11223344")
+        self.assertEqual(fields["manufacturer"], "Bambu Lab")
+        self.assertEqual(fields["catalogue_name"], "Bambu Lab PLA Basic Blue")
+        self.assertEqual(fields["material_name"], "PLA Basic")
+        self.assertEqual(fields["color_name"], "Blue")
+        self.assertEqual(fields["catalogue_match_status"], "exact")
+        self.assertEqual(fields["catalogue_match_source"], "identifier_and_rgba")
 
     def test_malformed_hex_produces_warning_instead_of_crashing(self) -> None:
         payload = representative_dump()
@@ -70,6 +77,48 @@ class DecoderTests(unittest.TestCase):
         self.assertIn(("filament_length_uncertain", "sector 3 block 2 absolute 14"), raw)
         self.assertIn(("unknown_block_17", "sector 4 block 1 absolute 17"), raw)
         self.assertIn(("rsa_signature_block", "sector 10 block 0 absolute 40"), raw)
+
+    def test_rsa_signature_region_is_assembled_without_trailers(self) -> None:
+        payload = representative_dump()
+
+        decoded = decoder.decode_dump_dict(payload)
+        signature = decoded.rsa_signature
+
+        self.assertIsNotNone(signature)
+        assert signature is not None
+        self.assertEqual(signature.status, "complete")
+        self.assertEqual(signature.expected_length_bytes, 256)
+        self.assertEqual(signature.available_length_bytes, 256)
+        self.assertEqual(len(signature.hex), 512)
+        self.assertFalse(signature.verified)
+        self.assertEqual(signature.verification_status, "not_implemented")
+        self.assertFalse(any(block.block == 3 and block.included_in_signature_hex for block in signature.blocks))
+        self.assertNotIn("87878769", signature.hex)
+
+    def test_rsa_signature_partial_when_required_payload_block_unreadable(self) -> None:
+        payload = representative_dump()
+        block = payload["sectors"][10]["blocks"][1]
+        block["status"] = "read_failed"
+        block["data_hex"] = None
+        block["error"] = "read_failed. Status: 63 00"
+
+        decoded = decoder.decode_dump_dict(payload)
+        signature = decoded.rsa_signature
+
+        self.assertIsNotNone(signature)
+        assert signature is not None
+        self.assertEqual(signature.status, "partial")
+        self.assertEqual(signature.expected_length_bytes, 256)
+        self.assertEqual(signature.available_length_bytes, 240)
+        self.assertTrue(any("RSA signature data is partial" in warning for warning in decoded.warnings))
+
+    def test_rsa_signature_does_not_assert_cryptographic_validity(self) -> None:
+        decoded = decoder.decode_dump_dict(representative_dump())
+
+        self.assertIsNotNone(decoded.rsa_signature)
+        assert decoded.rsa_signature is not None
+        self.assertFalse(decoded.rsa_signature.verified)
+        self.assertEqual(decoded.rsa_signature.verification_status, "not_implemented")
 
     def test_little_endian_numeric_conversion(self) -> None:
         payload = representative_dump()
@@ -112,6 +161,78 @@ class DecoderTests(unittest.TestCase):
 
         self.assertNotIn("filament_diameter_mm", fields)
         self.assertTrue(any("Cannot decode filament_diameter_mm" in warning for warning in decoded.warnings))
+
+    def test_catalogue_resolves_pumpkin_orange_without_generic_colour_guessing(self) -> None:
+        payload = catalogue_payload("PLA Basic Pumpkin Orange")
+
+        decoded = decoder.decode_dump_dict(payload)
+        fields = field_values(decoded)
+
+        self.assertEqual(fields["catalogue_match_status"], "exact")
+        self.assertEqual(fields["catalogue_name"], "Bambu Lab PLA Basic Pumpkin Orange")
+        self.assertEqual(fields["color_name"], "Pumpkin Orange")
+        self.assertNotEqual(fields["color_name"], "Orange")
+
+    def test_catalogue_resolves_validated_entries_across_material_families(self) -> None:
+        expected_names = {
+            "PLA Basic Blue": "Bambu Lab PLA Basic Blue",
+            "PLA Basic Hot Pink": "Bambu Lab PLA Basic Hot Pink",
+            "PLA Basic Green": "Bambu Lab PLA Basic Green",
+            "PLA Basic Pumpkin Orange": "Bambu Lab PLA Basic Pumpkin Orange",
+            "PLA Basic Bright Green": "Bambu Lab PLA Basic Bright Green",
+            "PLA Matte Desert Tan": "Bambu Lab PLA Matte Desert Tan",
+            "PLA Matte Charcoal": "Bambu Lab PLA Matte Charcoal",
+            "PLA Matte Terracotta": "Bambu Lab PLA Matte Terracotta",
+            "PLA Silk+ Silver": "Bambu Lab PLA Silk+ Silver",
+            "PETG Basic Gray": "Bambu Lab PETG Basic Gray",
+            "PETG Basic Blue": "Bambu Lab PETG Basic Blue",
+            "PETG Basic Yellow": "Bambu Lab PETG Basic Yellow",
+            "PETG HF Black": "Bambu Lab PETG HF Black",
+        }
+
+        for label, expected_name in expected_names.items():
+            with self.subTest(label=label):
+                decoded = decoder.decode_dump_dict(catalogue_payload(label))
+                fields = field_values(decoded)
+                self.assertEqual(fields["catalogue_match_status"], "exact")
+                self.assertEqual(fields["catalogue_name"], expected_name)
+
+    def test_unknown_catalogue_identifiers_do_not_invent_a_name(self) -> None:
+        payload = representative_dump()
+        set_block(payload, 0, 1, b"ZZZ-ZZ\x00\x00" + b"GFZZZ\x00\x00\x00")
+
+        decoded = decoder.decode_dump_dict(payload)
+        fields = field_values(decoded)
+
+        self.assertEqual(fields["catalogue_match_status"], "unknown")
+        self.assertIsNone(fields["catalogue_name"])
+        self.assertIsNone(fields["color_name"])
+
+    def test_conflicting_catalogue_identifier_and_rgba_is_ambiguous(self) -> None:
+        payload = representative_dump()
+        block5 = bytearray(bytes.fromhex(payload["sectors"][1]["blocks"][1]["data_hex"]))
+        block5[0:4] = bytes.fromhex("FF9016FF")
+        set_block(payload, 1, 1, block5)
+
+        decoded = decoder.decode_dump_dict(payload)
+        fields = field_values(decoded)
+
+        self.assertEqual(fields["catalogue_match_status"], "ambiguous")
+        self.assertIsNone(fields["catalogue_name"])
+        self.assertTrue(any("differs from expected" in warning for warning in decoded.warnings))
+
+    def test_partial_dump_without_catalogue_identifiers_returns_unknown(self) -> None:
+        payload = representative_dump()
+        payload["sectors"][0]["blocks"][1]["status"] = "read_failed"
+        payload["sectors"][0]["blocks"][1]["data_hex"] = None
+        payload["sectors"][0]["blocks"][1]["error"] = "read_failed. Status: 63 00"
+
+        decoded = decoder.decode_dump_dict(payload)
+        fields = field_values(decoded)
+
+        self.assertEqual(fields["catalogue_match_status"], "unknown")
+        self.assertIsNone(fields["catalogue_name"])
+        self.assertTrue(any("missing required field" in warning for warning in decoded.warnings))
 
     def test_string_decoding_trims_nulls_and_spaces(self) -> None:
         payload = representative_dump()
@@ -227,7 +348,7 @@ def representative_dump() -> dict[str, object]:
 
     manufacturer = bytes.fromhex("04123456") + bytes.fromhex("AABBCCDDEEFF001122334455")
     set_block(payload, 0, 0, manufacturer)
-    set_block(payload, 0, 1, b"A00-K0\x00\x00" + b"GFA00\x00\x00\x00")
+    set_block(payload, 0, 1, b"A00-B9\x00\x00" + b"GFA00\x00\x00\x00")
     set_block(payload, 0, 2, ascii_block("PLA"))
     set_block(payload, 1, 0, ascii_block("PLA Basic"))
 
@@ -266,7 +387,7 @@ def representative_dump() -> dict[str, object]:
     block17 = bytearray(16)
     block17[0:2] = bytes.fromhex("BEEF")
     set_block(payload, 4, 1, block17)
-    set_block(payload, 10, 0, bytes.fromhex("AA" * 16))
+    set_signature_region(payload)
     return payload
 
 
@@ -281,6 +402,35 @@ def hex_block(value: bytes) -> str:
 def set_block(payload: dict[str, object], sector: int, block: int, data: bytes | bytearray) -> None:
     assert len(data) == 16
     payload["sectors"][sector]["blocks"][block]["data_hex"] = bytes(data).hex().upper()
+
+
+def set_signature_region(payload: dict[str, object]) -> None:
+    payload_index = 0
+    for sector in range(10, 16):
+        for block in range(4):
+            if block == 3:
+                set_block(payload, sector, block, bytes.fromhex("00000000000087878769000000000000"))
+                continue
+
+            data = bytes([payload_index % 256]) * 16
+            set_block(payload, sector, block, data)
+            payload_index += 1
+
+
+def catalogue_payload(label: str) -> dict[str, object]:
+    entry = {
+        f"{item.material_name} {item.color_name}": item for item in bambu_catalogue.CATALOGUE
+    }[label]
+    payload = representative_dump()
+    variant = entry.tray_info_variant_id.encode("ascii").ljust(8, b"\x00")
+    material = entry.tray_info_material_id.encode("ascii").ljust(8, b"\x00")
+    set_block(payload, 0, 1, variant + material)
+    set_block(payload, 0, 2, ascii_block(entry.filament_type))
+    set_block(payload, 1, 0, ascii_block(entry.detailed_filament_type))
+    block5 = bytearray(bytes.fromhex(payload["sectors"][1]["blocks"][1]["data_hex"]))
+    block5[0:4] = bytes.fromhex(entry.color_rgba)
+    set_block(payload, 1, 1, block5)
+    return payload
 
 
 if __name__ == "__main__":
