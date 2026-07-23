@@ -103,3 +103,11 @@ Decision: Bambu RFID field decoding is implemented as a reusable saved-dump deco
 Reason: Decoding saved JSON files keeps the workflow read-only, allows validation without hardware, and avoids coupling uncertain tag-field work to operational inventory features.
 
 Status: Implemented for documented fields with synthetic tests; awaiting validation against real saved dumps.
+
+## 2026-07-23: Bambu filament diameter is decoded as float32
+
+Decision: The saved-dump decoder reads filament diameter from sector 1 block 1, offset 8 as a 4-byte little-endian IEEE-754 float.
+
+Reason: The upstream Bambu RFID layout marks the field as `float (LE)` but lists length `8`. Validation against a genuine Bambu PLA Basic Blue dump showed bytes `00 00 E0 3F` at the documented offset, which decode to 1.75 mm as a 32-bit little-endian float. Reading eight bytes as a double consumed adjacent reserved bytes and produced the near-zero regression value.
+
+Status: Implemented and covered by mocked decoder tests; broader real-dump validation remains useful.

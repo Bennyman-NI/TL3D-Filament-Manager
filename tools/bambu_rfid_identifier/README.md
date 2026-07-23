@@ -119,7 +119,7 @@ Print structured JSON instead of text:
 python -m tools.bambu_rfid_identifier.decode_dump path\to\bambu_rfid_dump.json --json
 ```
 
-The decoder currently supports documented fields from `docs/BambuLabRfid.md`: tray/material IDs, filament type, detailed filament type, primary colour RGBA, spool weight, filament diameter, drying settings, bed/hotend temperatures, X Cam bytes, minimum nozzle diameter, tray UID, spool width, production date strings, and documented extra colour info. Unknown, reserved, MIFARE trailer, uncertain filament-length, and RSA signature bytes are preserved as raw hex for later analysis.
+The decoder currently supports documented fields from `docs/BambuLabRfid.md`: tray/material IDs, filament type, detailed filament type, primary colour RGBA, spool weight, filament diameter, drying settings, bed/hotend temperatures, X Cam bytes, minimum nozzle diameter, tray UID, spool width, production date strings, and documented extra colour info. Filament diameter is decoded from sector 1 block 1 offset 8 as a 4-byte little-endian IEEE-754 float; this follows the upstream `float (LE)` type and real Bambu PLA Basic Blue dump validation. Unknown, reserved, MIFARE trailer, uncertain filament-length, and RSA signature bytes are preserved as raw hex for later analysis.
 
 The decoder is read-only and works from saved JSON only. It does not generate, sign, modify, clone, or emulate tags.
 
@@ -194,7 +194,7 @@ Expected Phase 1 hardware result:
 
 - Decode documented raw dump fields from saved JSON.
 - Preserve unknown and undocumented bytes.
-- Status: implemented for documented fields, awaiting validation against real-world saved dumps.
+- Status: implemented for documented fields and validated against one genuine PLA Basic Blue saved dump; broader real-world saved-dump validation pending.
 
 ### Phase 4 - Identifier window
 

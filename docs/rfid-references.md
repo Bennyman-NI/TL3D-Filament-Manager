@@ -21,6 +21,7 @@ Implementation notes:
 - The standalone RFID identifier stores upstream attribution in saved JSON dumps.
 - The tool uses only read-oriented PC/SC operations: reader-session key load, sector authentication, and block read.
 - The saved-dump decoder independently implements documented field offsets and data types from `docs/BambuLabRfid.md`.
+- Real-dump validation with a genuine Bambu PLA Basic Blue tag confirmed filament diameter at sector 1 block 1, offset 8 as a 4-byte little-endian IEEE-754 float. The upstream table marks the field as `float (LE)` but lists length `8`; TL3D treats the numeric representation as authoritative and reads 4 bytes so adjacent reserved bytes are not consumed.
 - Unknown, reserved, uncertain, MIFARE trailer, and RSA signature bytes are preserved as raw data rather than guessed.
 - Tag writing, cloning, emulation, UID changing, sector trailer modification, key changing, and brute-force key searching remain out of scope.
 

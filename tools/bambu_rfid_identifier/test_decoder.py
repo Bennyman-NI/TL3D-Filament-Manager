@@ -77,7 +77,41 @@ class DecoderTests(unittest.TestCase):
         fields = field_values(decoded)
 
         self.assertEqual(fields["spool_weight_grams"], 1000)
+        self.assertAlmostEqual(fields["filament_diameter_mm"], 1.75, places=6)
         self.assertEqual(fields["spool_width_mm"], 66.25)
+
+    def test_filament_diameter_uses_four_byte_little_endian_float(self) -> None:
+        payload = representative_dump()
+        block5 = bytearray(16)
+        block5[0:4] = bytes.fromhex("0A2989FF")
+        block5[4:6] = (1000).to_bytes(2, "little")
+        block5[8:12] = bytes.fromhex("0000E03F")
+        block5[12:16] = bytes.fromhex("DEADBEEF")
+        set_block(payload, 1, 1, block5)
+
+        decoded = decoder.decode_dump_dict(payload)
+        diameter = field_values(decoded)["filament_diameter_mm"]
+
+        self.assertAlmostEqual(diameter, 1.75, places=6)
+
+    def test_filament_diameter_does_not_regress_to_double_read(self) -> None:
+        payload = representative_dump()
+
+        decoded = decoder.decode_dump_dict(payload)
+        diameter = field_values(decoded)["filament_diameter_mm"]
+
+        self.assertGreater(diameter, 1.0)
+        self.assertNotAlmostEqual(diameter, 5.29462817e-315)
+
+    def test_short_filament_diameter_field_warns_without_crashing(self) -> None:
+        payload = representative_dump()
+        payload["sectors"][1]["blocks"][1]["data_hex"] = "0A2989FFE80300000000"
+
+        decoded = decoder.decode_dump_dict(payload)
+        fields = field_values(decoded)
+
+        self.assertNotIn("filament_diameter_mm", fields)
+        self.assertTrue(any("Cannot decode filament_diameter_mm" in warning for warning in decoded.warnings))
 
     def test_string_decoding_trims_nulls_and_spaces(self) -> None:
         payload = representative_dump()
@@ -200,7 +234,7 @@ def representative_dump() -> dict[str, object]:
     block5 = bytearray(16)
     block5[0:4] = bytes.fromhex("0A2989FF")
     block5[4:6] = (1000).to_bytes(2, "little")
-    block5[8:16] = struct.pack("<d", 1.75)
+    block5[8:12] = struct.pack("<f", 1.75)
     set_block(payload, 1, 1, block5)
 
     block6 = bytearray(16)

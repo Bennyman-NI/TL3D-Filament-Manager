@@ -219,7 +219,7 @@ def decode_documented_fields(blocks: dict[tuple[int, int], BlockBytes], result: 
     add_string(result, blocks, 1, 0, 0, 16, "detailed_filament_type", "Detailed Filament Type")
     add_rgba(result, blocks, 1, 1, 0, "color_rgba", "Color in hex RGBA")
     add_uint16(result, blocks, 1, 1, 4, "spool_weight_grams", "Spool Weight in grams")
-    add_float64(result, blocks, 1, 1, 8, "filament_diameter_mm", "Filament Diameter in millimeters")
+    add_float32(result, blocks, 1, 1, 8, "filament_diameter_mm", "Filament Diameter in millimeters")
     add_uint16(result, blocks, 1, 2, 0, "drying_temperature_c", "Drying Temperature in C")
     add_uint16(result, blocks, 1, 2, 2, "drying_time_hours", "Drying time in hours")
     add_uint16(result, blocks, 1, 2, 4, "bed_temperature_type", "Bed Temperature Type")
@@ -354,22 +354,27 @@ def add_float32(
     block_data = get_block(result, blocks, sector, block)
     if block_data is None:
         return
-    add_field(result, name, struct.unpack("<f", block_data.data[offset : offset + 4])[0], block_data, description)
-
-
-def add_float64(
-    result: DecodedDump,
-    blocks: dict[tuple[int, int], BlockBytes],
-    sector: int,
-    block: int,
-    offset: int,
-    name: str,
-    description: str,
-) -> None:
-    block_data = get_block(result, blocks, sector, block)
-    if block_data is None:
+    raw = read_field_bytes(result, block_data, offset, 4, name)
+    if raw is None:
         return
-    add_field(result, name, struct.unpack("<d", block_data.data[offset : offset + 8])[0], block_data, description)
+    add_field(result, name, struct.unpack("<f", raw)[0], block_data, description)
+
+
+def read_field_bytes(
+    result: DecodedDump,
+    block_data: BlockBytes,
+    offset: int,
+    length: int,
+    name: str,
+) -> bytes | None:
+    assert block_data.data is not None
+    if len(block_data.data) < offset + length:
+        result.warnings.append(
+            f"Cannot decode {name} from {block_data.source}; "
+            f"needs {length} bytes at offset {offset}, block has {len(block_data.data)} bytes."
+        )
+        return None
+    return block_data.data[offset : offset + length]
 
 
 def add_rgba(

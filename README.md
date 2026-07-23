@@ -36,7 +36,7 @@ python -m app
 - Core dashboard: minimal PySide6 placeholder shell only; production dashboard not started.
 - RFID reader proof of concept: CLI and standalone PySide6 GUI implemented under `tools/bambu_rfid_identifier/`.
 - Bambu tag UID reading, standalone GUI updates, and authenticated read-only raw memory dumping: implemented in code and covered by mocked tests; awaiting real ACR1255U-J1 and genuine Bambu tag hardware verification.
-- Bambu saved-dump decoding: implemented for documented fields; awaiting validation against real saved Bambu dumps.
+- Bambu saved-dump decoding: implemented for documented fields and validated against one genuine PLA Basic Blue saved dump; broader tag validation pending.
 - Inventory locations: planned.
 - Label management: planned.
 - Costing: planned.
