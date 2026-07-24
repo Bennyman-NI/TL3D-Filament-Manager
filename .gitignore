@@ -7,6 +7,7 @@ dist/
 build/
 *.egg-info/
 data/
+# Runtime Bambu catalogue cache is machine-generated under data/catalogues/bambu/
 logs/
 import_reports/
 # Local Python environment

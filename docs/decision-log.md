@@ -120,6 +120,14 @@ Reason: Marketed names such as Pumpkin Orange, Hot Pink, Desert Tan, Charcoal, a
 
 Status: Implemented for the current validated local dump dataset.
 
+## 2026-07-24: piitaya catalogue cache is the primary Bambu name source
+
+Decision: The saved-dump decoder uses a validated local cache of `piitaya/bambu-filaments` as the primary Bambu filament catalogue and keeps the bundled validated TL3D catalogue as an offline fallback.
+
+Reason: The upstream community project already tracks Bambu RFID variant IDs, official colour names from Bambu Studio data, colour hex values, and integration cross-references. Using a validated cache avoids rebuilding that upstream data pipeline while keeping TL3D independent from Bambu accounts, printers, credentials, tokens, and undocumented APIs.
+
+Status: Implemented with update CLI, validation, provenance metadata, and fallback behaviour.
+
 ## 2026-07-23: RSA signature bytes are assembled but not verified
 
 Decision: The saved-dump decoder exposes sectors 10 through 15 as an RSA signature region, excludes MIFARE sector trailers from signature payload bytes, and reports signature verification as not implemented.

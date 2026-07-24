@@ -38,7 +38,7 @@
 - Standalone identifier window: implemented in code and verified by automated tests with mocked PC/SC objects; awaiting real tag hardware verification.
 - Bambu sector authentication and raw memory inspection: implemented in code and verified by automated tests with mocked PC/SC objects; awaiting real ACR1255U-J1 and genuine Bambu tag hardware verification.
 - Real ACR1255U-J1 hardware verification: awaiting user hardware test.
-- Bambu saved-dump decoding: implemented for documented fields, RSA signature assembly metadata, and exact validated Bambu catalogue-name resolution; broader real-dump validation remains pending.
+- Bambu saved-dump decoding: implemented for documented fields, RSA signature assembly metadata, updateable Bambu catalogue cache resolution, and exact bundled fallback matches; broader real-dump validation remains pending.
 - Bambu tag decoding beyond documented raw dump fields: future.
 - Later main application integration: future; do not integrate until the standalone tool is proven reliable.
 

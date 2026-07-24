@@ -8,11 +8,21 @@ import unittest
 from pathlib import Path
 
 import bambu_catalogue
+import catalogue_loader
 import decoder
 import memory_inspector
 
 
 class DecoderTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.cache_dir = tempfile.TemporaryDirectory()
+        self.original_cache_dir = catalogue_loader.DEFAULT_CACHE_DIR
+        catalogue_loader.DEFAULT_CACHE_DIR = Path(self.cache_dir.name)
+
+    def tearDown(self) -> None:
+        catalogue_loader.DEFAULT_CACHE_DIR = self.original_cache_dir
+        self.cache_dir.cleanup()
+
     def test_decodes_valid_representative_dump(self) -> None:
         payload = representative_dump()
 
@@ -34,7 +44,7 @@ class DecoderTests(unittest.TestCase):
         self.assertEqual(fields["hotend_max_temperature_c"], 230)
         self.assertEqual(fields["hotend_min_temperature_c"], 190)
         self.assertAlmostEqual(fields["minimum_nozzle_diameter_mm"], 0.4)
-        self.assertEqual(fields["tray_uid"], "TRAY1234567890")
+        self.assertEqual(fields["tray_uid"], "54524159313233343536373839300000")
         self.assertEqual(fields["spool_width_mm"], 66.25)
         self.assertEqual(fields["production_datetime"], "2024_05_01_1200")
         self.assertEqual(fields["short_production_datetime"], "20240501")
@@ -46,7 +56,9 @@ class DecoderTests(unittest.TestCase):
         self.assertEqual(fields["material_name"], "PLA Basic")
         self.assertEqual(fields["color_name"], "Blue")
         self.assertEqual(fields["catalogue_match_status"], "exact")
-        self.assertEqual(fields["catalogue_match_source"], "identifier_and_rgba")
+        self.assertEqual(fields["catalogue_match_source"], "bundled validated fallback")
+        self.assertEqual(fields["catalogue_entry_id"], "A00-B9")
+        self.assertEqual(fields["catalogue_source_repository"], "TL3D bundled validated fallback")
 
     def test_malformed_hex_produces_warning_instead_of_crashing(self) -> None:
         payload = representative_dump()
@@ -208,7 +220,7 @@ class DecoderTests(unittest.TestCase):
         self.assertIsNone(fields["catalogue_name"])
         self.assertIsNone(fields["color_name"])
 
-    def test_conflicting_catalogue_identifier_and_rgba_is_ambiguous(self) -> None:
+    def test_conflicting_catalogue_identifier_and_rgba_returns_warning_status(self) -> None:
         payload = representative_dump()
         block5 = bytearray(bytes.fromhex(payload["sectors"][1]["blocks"][1]["data_hex"]))
         block5[0:4] = bytes.fromhex("FF9016FF")
@@ -217,9 +229,9 @@ class DecoderTests(unittest.TestCase):
         decoded = decoder.decode_dump_dict(payload)
         fields = field_values(decoded)
 
-        self.assertEqual(fields["catalogue_match_status"], "ambiguous")
-        self.assertIsNone(fields["catalogue_name"])
-        self.assertTrue(any("differs from expected" in warning for warning in decoded.warnings))
+        self.assertEqual(fields["catalogue_match_status"], "identifier_match_with_warning")
+        self.assertEqual(fields["catalogue_name"], "Bambu Lab PLA Basic Blue")
+        self.assertTrue(any("differs from catalogue colour" in warning for warning in decoded.warnings))
 
     def test_partial_dump_without_catalogue_identifiers_returns_unknown(self) -> None:
         payload = representative_dump()
@@ -232,7 +244,39 @@ class DecoderTests(unittest.TestCase):
 
         self.assertEqual(fields["catalogue_match_status"], "unknown")
         self.assertIsNone(fields["catalogue_name"])
-        self.assertTrue(any("missing required field" in warning for warning in decoded.warnings))
+        self.assertTrue(any("missing tray_info_variant_id" in warning for warning in decoded.warnings))
+
+    def test_default_report_is_concise_human_readable(self) -> None:
+        report = decoder.format_human_readable(decoder.decode_dump_dict(catalogue_payload("PLA Basic Pumpkin Orange")))
+
+        self.assertIn("Bambu RFID Filament Report", report)
+        self.assertIn("Filament", report)
+        self.assertIn("Full name", report)
+        self.assertIn("Bambu Lab PLA Basic Pumpkin Orange", report)
+        self.assertIn("Catalogue match           : ✓ Exact", report)
+        self.assertIn("Nozzle range              : 190–230 °C", report)
+        self.assertIn("Drying                    : 55 °C for 8 hours", report)
+        self.assertIn("Signature                 : Complete (256 bytes)", report)
+        self.assertIn("Verified                  : No", report)
+        self.assertNotIn("Catalogue source", report)
+        self.assertNotIn("Cryptographically verified", report)
+        self.assertNotIn("Decoded fields:", report)
+
+    def test_verbose_report_preserves_technical_output(self) -> None:
+        report = decoder.format_verbose(decoder.decode_dump_dict(representative_dump()))
+
+        self.assertIn("Bambu RFID Decoded Dump", report)
+        self.assertIn("Decoded fields:", report)
+        self.assertIn("Preserved raw/unknown data:", report)
+
+    def test_tray_uid_binary_value_does_not_warn_as_ascii(self) -> None:
+        payload = representative_dump()
+        set_block(payload, 2, 1, bytes.fromhex("1AB6889BD66D41919D59EF8DEF1FB1CB"))
+
+        decoded = decoder.decode_dump_dict(payload)
+
+        self.assertEqual(field_values(decoded)["tray_uid"], "1AB6889BD66D41919D59EF8DEF1FB1CB")
+        self.assertFalse(any("tray_uid as ASCII" in warning for warning in decoded.warnings))
 
     def test_string_decoding_trims_nulls_and_spaces(self) -> None:
         payload = representative_dump()

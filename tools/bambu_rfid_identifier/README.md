@@ -17,7 +17,7 @@ This tool is intentionally standalone and is not integrated into the TL3D Filame
 - Provides a standalone PySide6 GUI with reader connection status, reader name, current status, UID, and ATR.
 - Authenticates genuine Bambu MIFARE Classic 1K sectors with documented UID-derived keys and reads raw blocks without writing to the tag.
 - Displays raw sector/block data and allows timestamped JSON dump saving.
-- Decodes saved raw dump JSON files into documented Bambu fields, RSA signature metadata, and validated exact Bambu catalogue names without needing an RFID reader.
+- Decodes saved raw dump JSON files into documented Bambu fields, RSA signature metadata, and exact Bambu catalogue names without needing an RFID reader.
 
 ## Requirements
 
@@ -107,6 +107,22 @@ The implementation is an original Python standard-library implementation of the 
 
 ## Decode a saved dump
 
+Update the local community catalogue cache:
+
+```powershell
+python -m tools.bambu_rfid_identifier.update_catalogue
+```
+
+Useful update options:
+
+```powershell
+python -m tools.bambu_rfid_identifier.update_catalogue --dry-run
+python -m tools.bambu_rfid_identifier.update_catalogue --force
+python -m tools.bambu_rfid_identifier.update_catalogue --json
+```
+
+The updater downloads `https://raw.githubusercontent.com/piitaya/bambu-filaments/main/filaments.json`, validates every record, writes `data/catalogues/bambu/filaments.json`, and writes provenance metadata to `data/catalogues/bambu/metadata.json`. Those files are machine-generated and ignored by git through the repository `data/` rule.
+
 Decode an existing raw dump without connecting the RFID reader:
 
 ```powershell
@@ -121,7 +137,9 @@ python -m tools.bambu_rfid_identifier.decode_dump path\to\bambu_rfid_dump.json -
 
 The decoder currently supports documented fields from `docs/BambuLabRfid.md`: tray/material IDs, filament type, detailed filament type, primary colour RGBA, spool weight, filament diameter, drying settings, bed/hotend temperatures, X Cam bytes, minimum nozzle diameter, tray UID, spool width, production date strings, and documented extra colour info. Filament diameter is decoded from sector 1 block 1 offset 8 as a 4-byte little-endian IEEE-754 float; this follows the upstream `float (LE)` type and real Bambu PLA Basic Blue dump validation.
 
-The decoder also resolves exact official Bambu names from the validated local catalogue in `bambu_catalogue.py`. It prefers tray material ID and tray variant ID, checks filament type and detailed filament type, and uses RGBA as validation. Unknown identifier combinations are reported as `unknown` instead of being guessed from colour.
+The decoder resolves exact official Bambu names from the updateable `piitaya/bambu-filaments` cache where available, with the bundled validated local catalogue retained as an offline fallback. It uses `tray_info_variant_id` as the primary key because the upstream catalogue is keyed by the RFID variant ID. Filament type, detailed filament type, and RGBA validate the match; unknown IDs are reported as `unknown` rather than guessed from colour.
+
+The default decode output is a concise filament report. Use `--verbose` for the detailed technical report with all decoded fields and preserved raw regions.
 
 Sectors 10 through 15 are represented as an RSA signature region with block-level provenance. MIFARE sector trailers remain trailer blocks and are excluded from signature payload bytes. The decoder preserves signature bytes for comparison but reports `verified: false` and `verification_status: not_implemented`; it does not cryptographically verify authenticity.
 
@@ -201,6 +219,7 @@ Expected Phase 1 hardware result:
 - Decode documented raw dump fields from saved JSON.
 - Preserve unknown and undocumented bytes.
 - Resolve exact validated Bambu catalogue names from stable identifiers.
+- Update and validate the local piitaya/bambu-filaments cache.
 - Represent RSA signature bytes without verification claims.
 - Status: implemented for documented fields and current validated local dump samples; broader real-world saved-dump validation pending.
 

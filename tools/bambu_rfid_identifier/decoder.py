@@ -257,7 +257,7 @@ def decode_documented_fields(blocks: dict[tuple[int, int], BlockBytes], result: 
     add_uint16(result, blocks, 1, 2, 10, "hotend_min_temperature_c", "Min Temperature for Hotend in C")
     add_raw_range(result, blocks, 2, 0, 0, 12, "x_cam_info", "X Cam info")
     add_float32(result, blocks, 2, 0, 12, "minimum_nozzle_diameter_mm", "Minimum Nozzle Diameter")
-    add_string(result, blocks, 2, 1, 0, 16, "tray_uid", "Tray UID")
+    add_raw_range(result, blocks, 2, 1, 0, 16, "tray_uid", "Tray UID as raw hexadecimal bytes")
     add_scaled_uint16(result, blocks, 2, 2, 4, 100.0, "spool_width_mm", "Spool Width in mm")
     add_string(result, blocks, 3, 0, 0, 16, "production_datetime", "Production Date and Time in ASCII")
     add_string(result, blocks, 3, 1, 0, 16, "short_production_datetime", "Short Production Date/Time")
@@ -322,8 +322,7 @@ def add_unknown(result: DecodedDump, name: str, block: BlockBytes, reason: str) 
 
 def resolve_catalogue_fields(result: DecodedDump) -> None:
     match = bambu_catalogue.resolve_catalogue({item.name: item.value for item in result.fields})
-    if match.warning:
-        result.warnings.append(match.warning)
+    result.warnings.extend(match.validation_warnings)
 
     source = f"bambu catalogue resolver: {match.source}"
     add_resolved_field(result, "manufacturer", match.manufacturer, source, "Resolved manufacturer.")
@@ -332,6 +331,17 @@ def resolve_catalogue_fields(result: DecodedDump) -> None:
     add_resolved_field(result, "color_name", match.color_name, source, "Resolved official colour name.")
     add_resolved_field(result, "catalogue_match_status", match.status, source, "Catalogue match status.")
     add_resolved_field(result, "catalogue_match_source", match.source, source, "Catalogue match source.")
+    add_resolved_field(result, "catalogue_entry_id", match.entry_id, source, "Catalogue variant ID.")
+    add_resolved_field(result, "catalogue_source_repository", match.source_repository, source, "Catalogue source repository.")
+    add_resolved_field(result, "catalogue_source_checksum", match.source_checksum, source, "Catalogue source checksum.")
+    add_resolved_field(result, "catalogue_source_fetched_at", match.source_fetched_at, source, "Catalogue source fetch timestamp.")
+    add_resolved_field(
+        result,
+        "catalogue_validation_warnings",
+        list(match.validation_warnings),
+        source,
+        "Catalogue validation warnings.",
+    )
 
 
 def assemble_rsa_signature(
@@ -547,7 +557,7 @@ def add_raw_range(
     add_field(result, name, block_data.data[offset : offset + length].hex().upper(), block_data, description)
 
 
-def format_human_readable(decoded: DecodedDump) -> str:
+def format_verbose(decoded: DecodedDump) -> str:
     lines = [
         "Bambu RFID Decoded Dump",
         f"UID: {decoded.metadata.uid or 'unknown'}",
@@ -583,3 +593,87 @@ def format_human_readable(decoded: DecodedDump) -> str:
         for item in decoded.raw_unknown:
             lines.append(f"- {item.name}: {item.data_hex or '-'} ({item.source})")
     return "\n".join(lines)
+
+
+def format_human_readable(decoded: DecodedDump) -> str:
+    fields = {item.name: item.value for item in decoded.fields}
+    signature = decoded.rsa_signature
+    lines = [
+        "Bambu RFID Filament Report",
+        "",
+        "Filament",
+        "--------",
+        report_line("Manufacturer", fields.get("manufacturer")),
+        report_line("Product", fields.get("material_name")),
+        report_line("Colour", fields.get("color_name")),
+        report_line("Full name", fields.get("catalogue_name")),
+        report_line("Catalogue match", format_catalogue_match(fields.get("catalogue_match_status"))),
+        "",
+        "Physical",
+        "--------",
+        report_line("Diameter", format_mm(fields.get("filament_diameter_mm"))),
+        report_line("Nominal weight", format_grams(fields.get("spool_weight_grams"))),
+        "",
+        "Printing",
+        "--------",
+        report_line("Nozzle range", format_temperature_range(fields.get("hotend_min_temperature_c"), fields.get("hotend_max_temperature_c"))),
+        report_line("Drying", format_drying(fields.get("drying_temperature_c"), fields.get("drying_time_hours"))),
+        "",
+        "RFID",
+        "----",
+        report_line("Tag UID", decoded.metadata.uid),
+        report_line("Variant ID", fields.get("tray_info_variant_id")),
+        report_line("Dump status", display_status(decoded.metadata.dump_status)),
+        report_line("Signature", format_signature(signature)),
+        report_line("Verified", "Yes" if signature and signature.verified else "No"),
+    ]
+    visible_warnings = [warning for warning in decoded.warnings if warning]
+    if decoded.errors:
+        lines.extend(["", "Errors", "------"])
+        lines.extend(f"- {error}" for error in decoded.errors)
+    if visible_warnings:
+        lines.extend(["", "Warnings", "--------"])
+        lines.extend(f"- {warning}" for warning in visible_warnings)
+    return "\n".join(lines)
+
+
+def report_line(label: str, value: object) -> str:
+    shown = "Unknown" if value is None or value == "" else value
+    return f"{label:<26}: {shown}"
+
+
+def display_status(value: object) -> str:
+    if not isinstance(value, str) or not value:
+        return "Unknown"
+    return value.replace("_", " ").title()
+
+
+def format_catalogue_match(value: object) -> str:
+    status = display_status(value)
+    return f"✓ {status}" if status == "Exact" else status
+
+
+def format_mm(value: object) -> str:
+    return f"{value:g} mm" if isinstance(value, (int, float)) else "Unknown"
+
+
+def format_grams(value: object) -> str:
+    return f"{value:g} g" if isinstance(value, (int, float)) else "Unknown"
+
+
+def format_temperature_range(min_value: object, max_value: object) -> str:
+    if isinstance(min_value, (int, float)) and isinstance(max_value, (int, float)):
+        return f"{min_value:g}–{max_value:g} °C"
+    return "Unknown"
+
+
+def format_drying(temperature: object, hours: object) -> str:
+    if isinstance(temperature, (int, float)) and isinstance(hours, (int, float)):
+        return f"{temperature:g} °C for {hours:g} hours"
+    return "Unknown"
+
+
+def format_signature(signature: RsaSignature | None) -> str:
+    if signature is None:
+        return "Unknown"
+    return f"{display_status(signature.status)} ({signature.available_length_bytes:g} bytes)"

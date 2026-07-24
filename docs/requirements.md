@@ -45,6 +45,8 @@
 - Decoding must report malformed JSON, unsupported schema versions, missing sectors or blocks, invalid hex data, unreadable blocks, and incomplete dumps without crashing.
 - Saved-dump decoding must represent the Bambu RSA signature region separately from MIFARE sector trailers and must not claim cryptographic validity unless verification is explicitly implemented with a confirmed Bambu public key.
 - Saved-dump decoding must resolve exact official Bambu catalogue names only from validated identifier mappings. It must not invent marketed colour names from RGBA approximation alone.
+- Bambu catalogue updates must use the public `piitaya/bambu-filaments` JSON source, validate the entire payload, write cache files atomically, keep previous cache files after failures, and avoid Bambu accounts, printers, credentials, tokens, or undocumented APIs.
+- The downloaded Bambu catalogue cache must include provenance metadata with source repository, URL, fetch timestamp, SHA-256 checksum, record count, HTTP ETag where supplied, HTTP Last-Modified where supplied, and local schema version.
 - Unknown or undocumented Bambu RFID bytes must remain available as raw hex and must not be guessed.
 
 ## Future label-printing requirements

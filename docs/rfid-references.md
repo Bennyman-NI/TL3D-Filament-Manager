@@ -31,3 +31,18 @@ Implementation notes:
 Licence implications:
 
 - The upstream repository is GPL-3.0 licensed. Because this implementation is based on the published algorithm and documentation rather than copied code, TL3D records attribution and the upstream licence here. If future work copies upstream code or larger derived portions, review GPL-3.0 compatibility before distributing the result.
+
+## piitaya/bambu-filaments
+
+- Upstream repository: `piitaya/bambu-filaments`
+- Runtime catalogue URL: https://raw.githubusercontent.com/piitaya/bambu-filaments/main/filaments.json
+- Licence observed: MIT, as reported by the GitHub repository.
+
+Implementation notes:
+
+- TL3D uses this community-maintained catalogue as the primary updateable source for official Bambu filament names and colour names.
+- The upstream project is keyed by the Bambu RFID variant ID and documents that the ID is stored on the RFID tag and maps to material plus colour.
+- Official colour names ultimately derive from Bambu Studio data in the upstream project, with RFID dump/library data and SpoolmanDB cross-references used by that project.
+- TL3D downloads and validates the JSON catalogue into `data/catalogues/bambu/filaments.json` with provenance metadata in `data/catalogues/bambu/metadata.json`.
+- Machine-generated catalogue cache files are ignored by git through the existing `data/` ignore rule.
+- The bundled TL3D validated catalogue remains as an offline fallback and is not merged over conflicting downloaded entries.
