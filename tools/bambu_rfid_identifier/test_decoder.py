@@ -269,6 +269,55 @@ class DecoderTests(unittest.TestCase):
         self.assertIn("Decoded fields:", report)
         self.assertIn("Preserved raw/unknown data:", report)
 
+    def test_catalogue_conflict_is_exposed_in_json_shape(self) -> None:
+        write_catalogue_cache(
+            Path(self.cache_dir.name),
+            [catalogue_record("G00-B00", "PETG", "PETG Basic", "Reflex Blue", "001489FF")],
+        )
+
+        decoded = decoder.decode_dump_dict(catalogue_payload("PETG Basic Blue"))
+        fields = field_values(decoded)
+        conflict = fields["catalogue_conflict"]
+
+        self.assertEqual(fields["catalogue_match_status"], "identifier_match_with_warning")
+        self.assertEqual(fields["catalogue_validation_warnings"], ["Downloaded catalogue entry G00-B00 conflicts with bundled validated fallback."])
+        self.assertEqual(conflict["identifier"], "G00-B00")
+        self.assertEqual(conflict["differing_fields"], ["color_name"])
+        self.assertEqual(conflict["downloaded"]["color_name"], "Reflex Blue")
+        self.assertEqual(conflict["bundled_fallback"]["color_name"], "Blue")
+        encoded = json.dumps(decoded.to_dict())
+        self.assertIn("catalogue_conflict", encoded)
+
+    def test_verbose_report_includes_catalogue_conflict_details(self) -> None:
+        write_catalogue_cache(
+            Path(self.cache_dir.name),
+            [catalogue_record("G00-B00", "PETG", "PETG Basic", "Reflex Blue", "001489FF")],
+        )
+
+        report = decoder.format_verbose(decoder.decode_dump_dict(catalogue_payload("PETG Basic Blue")))
+
+        self.assertIn("Catalogue conflict:", report)
+        self.assertIn("- Identifier: G00-B00", report)
+        self.assertIn("- Differing fields: color_name", report)
+        self.assertIn("Downloaded:", report)
+        self.assertIn("- color_name: Reflex Blue", report)
+        self.assertIn("Bundled fallback:", report)
+        self.assertIn("- color_name: Blue", report)
+
+    def test_normal_report_keeps_conflict_details_hidden(self) -> None:
+        write_catalogue_cache(
+            Path(self.cache_dir.name),
+            [catalogue_record("G00-B00", "PETG", "PETG Basic", "Reflex Blue", "001489FF")],
+        )
+
+        report = decoder.format_human_readable(decoder.decode_dump_dict(catalogue_payload("PETG Basic Blue")))
+
+        self.assertIn("Catalogue match           : Identifier Match With Warning", report)
+        self.assertIn("- Downloaded catalogue entry G00-B00 conflicts with bundled validated fallback.", report)
+        self.assertNotIn("Catalogue conflict:", report)
+        self.assertNotIn("Downloaded:", report)
+        self.assertNotIn("Bundled fallback:", report)
+
     def test_tray_uid_binary_value_does_not_warn_as_ascii(self) -> None:
         payload = representative_dump()
         set_block(payload, 2, 1, bytes.fromhex("1AB6889BD66D41919D59EF8DEF1FB1CB"))
@@ -475,6 +524,44 @@ def catalogue_payload(label: str) -> dict[str, object]:
     block5[0:4] = bytes.fromhex(entry.color_rgba)
     set_block(payload, 1, 1, block5)
     return payload
+
+
+def catalogue_record(
+    variant_id: str,
+    material: str,
+    product: str,
+    color_name: str,
+    color_hex: str,
+) -> dict[str, object]:
+    return {
+        "id": variant_id,
+        "material": material,
+        "product": product,
+        "color_name": color_name,
+        "color_hex": color_hex,
+        "color_hexes": [color_hex],
+        "weight": 1000,
+        "temp_min": None,
+        "temp_max": None,
+        "integrations": {},
+    }
+
+
+def write_catalogue_cache(cache_dir: Path, records: list[dict[str, object]]) -> None:
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    raw = json.dumps(records).encode("utf-8")
+    (cache_dir / "filaments.json").write_bytes(raw)
+    (cache_dir / "metadata.json").write_text(
+        json.dumps(
+            {
+                "source_repository": "piitaya/bambu-filaments",
+                "sha256": catalogue_loader.sha256_hex(raw),
+                "fetched_at_utc": "2026-07-24T12:00:00Z",
+                "record_count": len(records),
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 if __name__ == "__main__":

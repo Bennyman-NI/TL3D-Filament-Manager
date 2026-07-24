@@ -342,6 +342,19 @@ def resolve_catalogue_fields(result: DecodedDump) -> None:
         source,
         "Catalogue validation warnings.",
     )
+    if match.conflict is not None:
+        add_resolved_field(
+            result,
+            "catalogue_conflict",
+            {
+                "identifier": match.conflict.identifier,
+                "differing_fields": list(match.conflict.differing_fields),
+                "downloaded": match.conflict.downloaded,
+                "bundled_fallback": match.conflict.bundled_fallback,
+            },
+            source,
+            "Downloaded catalogue versus bundled fallback conflict diagnostic.",
+        )
 
 
 def assemble_rsa_signature(
@@ -577,6 +590,9 @@ def format_verbose(decoded: DecodedDump) -> str:
         lines.append("Decoded fields:")
         for item in decoded.fields:
             lines.append(f"- {item.name}: {item.value} ({item.source})")
+    conflict = catalogue_conflict(decoded)
+    if conflict is not None:
+        lines.extend(format_catalogue_conflict(conflict))
     if decoded.rsa_signature:
         lines.append("")
         lines.append("RSA signature:")
@@ -635,6 +651,37 @@ def format_human_readable(decoded: DecodedDump) -> str:
         lines.extend(["", "Warnings", "--------"])
         lines.extend(f"- {warning}" for warning in visible_warnings)
     return "\n".join(lines)
+
+
+def catalogue_conflict(decoded: DecodedDump) -> dict[str, object] | None:
+    for item in decoded.fields:
+        if item.name == "catalogue_conflict" and isinstance(item.value, dict):
+            return item.value
+    return None
+
+
+def format_catalogue_conflict(conflict: dict[str, object]) -> list[str]:
+    differing_fields = conflict.get("differing_fields")
+    downloaded = conflict.get("downloaded")
+    bundled = conflict.get("bundled_fallback")
+    if not isinstance(differing_fields, list) or not isinstance(downloaded, dict) or not isinstance(bundled, dict):
+        return []
+
+    lines = [
+        "",
+        "Catalogue conflict:",
+        f"- Identifier: {conflict.get('identifier') or 'Unknown'}",
+        f"- Differing fields: {', '.join(str(field) for field in differing_fields) or 'None'}",
+        "",
+        "Downloaded:",
+    ]
+    for field_name in differing_fields:
+        lines.append(f"- {field_name}: {downloaded.get(field_name) if downloaded.get(field_name) is not None else 'Unknown'}")
+    lines.append("")
+    lines.append("Bundled fallback:")
+    for field_name in differing_fields:
+        lines.append(f"- {field_name}: {bundled.get(field_name) if bundled.get(field_name) is not None else 'Unknown'}")
+    return lines
 
 
 def report_line(label: str, value: object) -> str:

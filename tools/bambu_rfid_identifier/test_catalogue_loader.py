@@ -198,6 +198,32 @@ class CatalogueResolverTests(unittest.TestCase):
 
         self.assertEqual(match.status, "identifier_match_with_warning")
         self.assertTrue(any("conflicts with bundled" in warning for warning in match.validation_warnings))
+        self.assertIsNotNone(match.conflict)
+        assert match.conflict is not None
+        self.assertEqual(match.conflict.identifier, "A00-A1")
+        self.assertEqual(match.conflict.differing_fields, ("color_name",))
+        self.assertEqual(match.conflict.downloaded["color_name"], "Generic Orange")
+        self.assertEqual(match.conflict.bundled_fallback["color_name"], "Pumpkin Orange")
+
+    def test_conflict_field_order_is_deterministic(self) -> None:
+        conflicting = json_bytes([
+            record("A00-A1", material="PETG", product="PLA Matte", color_name="Generic Orange", color_hex="000000FF")
+        ])
+        with temporary_cache(conflicting) as cache_dir:
+            match = resolve_with_cache(cache_dir, "A00-A1", "PLA", "PLA Basic", "FF9016FF")
+
+        self.assertIsNotNone(match.conflict)
+        assert match.conflict is not None
+        self.assertEqual(match.conflict.differing_fields, ("material", "product", "color_name", "color_hex"))
+
+    def test_provenance_metadata_does_not_create_false_conflict(self) -> None:
+        non_conflicting = json_bytes([record("A00-A1")])
+        with temporary_cache(non_conflicting) as cache_dir:
+            write_metadata(cache_dir, {"source_repository": "somewhere-else", "sha256": "different"})
+            match = resolve_with_cache(cache_dir, "A00-A1", "PLA", "PLA Basic", "FF9016FF")
+
+        self.assertEqual(match.status, "exact")
+        self.assertIsNone(match.conflict)
 
     def test_provenance_fields_are_reported(self) -> None:
         with temporary_cache(sample_catalogue()) as cache_dir:

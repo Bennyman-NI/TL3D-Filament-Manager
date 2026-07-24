@@ -15,6 +15,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CACHE_DIR = PROJECT_ROOT / "data" / "catalogues" / "bambu"
 DEFAULT_CACHE_PATH = DEFAULT_CACHE_DIR / "filaments.json"
 DEFAULT_METADATA_PATH = DEFAULT_CACHE_DIR / "metadata.json"
+CONFLICT_COMPARE_FIELDS = ("material", "product", "color_name", "color_hex")
 
 
 class CatalogueError(ValueError):
@@ -74,6 +75,14 @@ class CatalogueData:
     validation_warnings: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class CatalogueConflict:
+    identifier: str
+    differing_fields: tuple[str, ...]
+    downloaded: dict[str, object]
+    bundled_fallback: dict[str, object]
+
+
 def fallback(
     variant_id: str,
     material: str,
@@ -120,6 +129,7 @@ class CatalogueMatch:
     source_checksum: str | None
     source_fetched_at: str | None
     validation_warnings: tuple[str, ...] = ()
+    conflict: CatalogueConflict | None = None
 
 
 FALLBACK_RECORDS: tuple[CatalogueRecord, ...] = (
@@ -155,17 +165,18 @@ def resolve_catalogue_with_cache(fields: dict[str, object], cache_dir: Path) -> 
         fallback_record = fallback_catalogue.records.get(variant_id)
         if cache_record is not None:
             warnings = validation_warnings(cache_record, fields)
-            if fallback_record is not None and records_conflict(cache_record, fallback_record):
+            conflict = conflict_diagnostic(cache_record, fallback_record) if fallback_record is not None else None
+            if conflict is not None:
                 warnings.append(f"Downloaded catalogue entry {variant_id} conflicts with bundled validated fallback.")
-            return match_from_record(cache_record, cache, fields, warnings)
+            return match_from_record(cache_record, cache, fields, warnings, conflict)
         if fallback_record is not None:
             warnings = [f"Variant {variant_id} was absent from downloaded cache; using bundled validated fallback."]
             warnings.extend(validation_warnings(fallback_record, fields))
-            return match_from_record(fallback_record, fallback_catalogue, fields, warnings)
+            return match_from_record(fallback_record, fallback_catalogue, fields, warnings, None)
 
     fallback_record = fallback_catalogue.records.get(variant_id)
     if fallback_record is not None:
-        return match_from_record(fallback_record, fallback_catalogue, fields, validation_warnings(fallback_record, fields))
+        return match_from_record(fallback_record, fallback_catalogue, fields, validation_warnings(fallback_record, fields), None)
     return unknown("unknown", None, (f"No Bambu catalogue entry found for variant ID {variant_id}.",))
 
 
@@ -274,6 +285,7 @@ def match_from_record(
     catalogue: CatalogueData,
     fields: dict[str, object],
     warnings: list[str],
+    conflict: CatalogueConflict | None,
 ) -> CatalogueMatch:
     status = "identifier_match_with_warning" if warnings else "exact"
     return CatalogueMatch(
@@ -288,6 +300,7 @@ def match_from_record(
         source_checksum=catalogue.source_checksum,
         source_fetched_at=catalogue.source_fetched_at,
         validation_warnings=tuple(warnings),
+        conflict=conflict,
     )
 
 
@@ -308,13 +321,36 @@ def validation_warnings(record: CatalogueRecord, fields: dict[str, object]) -> l
     return warnings
 
 
-def records_conflict(cache_record: CatalogueRecord, fallback_record: CatalogueRecord) -> bool:
-    return (
-        cache_record.material != fallback_record.material
-        or cache_record.product != fallback_record.product
-        or cache_record.color_name != fallback_record.color_name
-        or cache_record.color_hex != fallback_record.color_hex
+def conflict_diagnostic(cache_record: CatalogueRecord, fallback_record: CatalogueRecord) -> CatalogueConflict | None:
+    downloaded = normalized_conflict_record(cache_record)
+    bundled = normalized_conflict_record(fallback_record)
+    differing_fields = tuple(
+        field_name for field_name in CONFLICT_COMPARE_FIELDS if downloaded[field_name] != bundled[field_name]
     )
+    if not differing_fields:
+        return None
+    return CatalogueConflict(
+        identifier=cache_record.id,
+        differing_fields=differing_fields,
+        downloaded=downloaded,
+        bundled_fallback=bundled,
+    )
+
+
+def normalized_conflict_record(record: CatalogueRecord) -> dict[str, object]:
+    return {
+        "id": normalize_optional(record.id),
+        "material": normalize_optional(record.material),
+        "product": normalize_optional(record.product),
+        "color_name": normalize_optional(record.color_name),
+        "color_hex": normalize_optional(record.color_hex),
+    }
+
+
+def normalize_optional(value: object) -> object:
+    if value == "" or value == [] or value == {}:
+        return None
+    return value
 
 
 def unknown(source: str, repository: str | None, warnings: tuple[str, ...]) -> CatalogueMatch:
